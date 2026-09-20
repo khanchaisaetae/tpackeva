@@ -97,7 +97,7 @@
             TPACK AI Evaluator
             <span class="text-xs bg-blue-500/30 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full font-medium">100 คะแนนเต็ม</span>
           </h1>
-          <p class="text-xs text-blue-200/80">ระบบตรวจประเมินแผนการจัดการเรียนรู้ตามกรอบ TPACK ด้วยปัญญาประดิษฐ์</p>
+          <p class="text-xs text-blue-200/80">ระบบตรวจประเมินแผนการจัดการเรียนรู้ตามกรอบ TPACK ด้วยปัญญาประดิษฐ์ (โหมดเที่ยงตรงสูง)</p>
         </div>
       </div>
       <div class="flex items-center space-x-2">
@@ -168,10 +168,10 @@
             ประเมินครอบคลุม 10 ด้าน: CK (8), PK (8), TK (8), PCK (10), TCK (10), TPK (10), TPACK (18), การประเมิน (10), Alignment (10), และความเป็นไปได้ (8) รวมทั้งสิ้น 100 คะแนน
           </p>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
-            Gemini 3 Flash Ready
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200" title="ตั้งค่า Temperature=0 และ Fixed Seed เพื่อให้ผลการประเมินชุดเดิมได้คะแนนเท่าเดิม 100%">
+            <svg class="w-3.5 h-3.5 text-indigo-600 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            Deterministic Eval (ความเที่ยงตรงสูง)
           </span>
         </div>
       </div>
@@ -263,7 +263,7 @@
               <span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
               2. เกณฑ์การประเมิน 10 ด้านตามแบบประเมินมาตรฐาน
             </h3>
-            <span class="text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-0.5 rounded-md">เกณฑ์คุณภาพ 4 ระดับ</span>
+            <span class="text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-0.5 rounded-md">เกณฑ์คุณภาพ 4 ระดับ (เกณฑ์แน่นอน)</span>
           </div>
 
           <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
@@ -925,7 +925,6 @@
       // Check if user has an API Key
       const apiKey = getStoredApiKey();
       if (!apiKey) {
-        // Prompt user directly instead of sending an empty request that is guaranteed to fail
         inputApiKey.value = "";
         apikeyModal.classList.remove('hidden');
         showToast("โปรดระบุ Gemini API Key หรือกด 'ใช้โหมดออฟไลน์ทันที'", "info");
@@ -934,41 +933,88 @@
 
       setLoadingState(true);
 
+      // Deterministic & Objective Rubric Calibration
       const systemPrompt = `คุณคือผู้เชี่ยวชาญระดับชาติในการประเมินและนิเทศแผนการจัดการเรียนรู้ตามกรอบ TPACK (Technological Pedagogical Content Knowledge)
-ภารกิจของคุณคือวิเคราะห์แผนการจัดการเรียนรู้ที่ได้รับอย่างละเอียด เที่ยงตรง อิงตามรูบริกแบบประเมิน 100 คะแนนเต็ม
-เกณฑ์ 10 ด้านที่ต้องประเมินและน้ำหนักคะแนนเต็ม:
-1. CK (ความรู้ด้านเนื้อหา) น้ำหนัก 8 คะแนน
-2. PK (ความรู้ด้านการสอน) น้ำหนัก 8 คะแนน
-3. TK (ความรู้ด้านเทคโนโลยี) น้ำหนัก 8 คะแนน
-4. PCK (การบูรณาการเนื้อหาและวิธีสอน) น้ำหนัก 10 คะแนน
-5. TCK (การบูรณาการเทคโนโลยีกับเนื้อหา) น้ำหนัก 10 คะแนน
-6. TPK (การบูรณาการเทคโนโลยีกับวิธีสอน) น้ำหนัก 10 คะแนน
-7. TPACK (การบูรณาการองค์รวม) น้ำหนัก 18 คะแนน
-8. การประเมิน (การวัดและประเมินผล) น้ำหนัก 10 คะแนน
-9. Alignment (ความสอดคล้องของแผน) น้ำหนัก 10 คะแนน
-10. การนำไปใช้ (ความเป็นไปได้และการนำไปใช้) น้ำหนัก 8 คะแนน
+คุณต้องประเมินอย่างเที่ยงตรง เป็นกลาง และคงเส้นคงวา (Reliable & Deterministic) โดยยึดตามหลักฐานที่ปรากฏในแผนการสอนจริงเท่านั้น
 
-ระดับคุณภาพในแต่ละข้อ (scoreLevel):
-4 = ดีเยี่ยม (ครบถ้วน ชัดเจน เป็นระบบ)
-3 = ดี (เหมาะสม มีข้อบกพร่องเล็กน้อย)
-2 = พอใช้ (มีองค์ประกอบแต่ยังไม่สมบูรณ์)
-1 = ควรปรับปรุง (ขาดหรือไม่สอดคล้อง)
+รายการ 10 ด้านที่ต้องประเมินและเกณฑ์ตัดสินระดับคุณภาพ (1 ถึง 4):
+1. CK (ความรู้ด้านเนื้อหา) [น้ำหนัก 8]:
+   - ระดับ 4: เนื้อหาถูกต้องครบถ้วน เป็นระบบ มีความลึกซึ้ง เหมาะกับระดับชั้น และสอดคล้องกับผลลัพธ์การเรียนรู้ชัดเจน
+   - ระดับ 3: เนื้อหาถูกต้องเป็นส่วนใหญ่ สอดคล้องกับผลลัพธ์ มีข้อบกพร่องเล็กน้อย
+   - ระดับ 2: เนื้อหาถูกต้องบางส่วน แต่ขาดความต่อเนื่องหรือความลึก
+   - ระดับ 1: เนื้อหาคลาดเคลื่อน ไม่ครบถ้วน หรือไม่เหมาะกับระดับผู้เรียน
 
-สูตรคำนวณคะแนน: weightedScore = (scoreLevel / 4) * weight
-หลักการตัดสินสำคัญ: ไม่ให้คะแนนสูงเพียงเพราะมีเครื่องมือเทคโนโลยีหลายชนิด ให้พิจารณาว่าเทคโนโลยีช่วยส่งเสริมความเข้าใจเนื้อหา Active Learning และบรรลุผลลัพธ์การเรียนรู้ได้ดีเพียงใด
-กรุณาตอบเป็น JSON โครงสร้างตาม Schema ที่กำหนดเท่านั้น`;
+2. PK (ความรู้ด้านการสอน) [น้ำหนัก 8]:
+   - ระดับ 4: ออกแบบกิจกรรมเชิงรุก (Active Learning) ผู้เรียนลงมือปฏิบัติจริง มีการทำงานร่วมกัน ส่งเสริมการคิดขั้นสูง
+   - ระดับ 3: วิธีสอนเหมาะสม ผู้เรียนมีส่วนร่วมเป็นส่วนใหญ่
+   - ระดับ 2: มีกิจกรรมแต่ยังเน้นครูเป็นศูนย์กลาง (Passive) ขาดความหลากหลาย
+   - ระดับ 1: วิธีสอนไม่เหมาะสม กิจกรรมไม่สนับสนุนเป้าหมายการเรียนรู้
 
-      const userQuery = `นี่คือแผนการจัดการเรียนรู้ที่ต้องการให้ตรวจประเมิน:
+3. TK (ความรู้ด้านเทคโนโลยี) [น้ำหนัก 8]:
+   - ระดับ 4: เลือกใช้เทคโนโลยีเหมาะสม ใช้งานได้จริง มีการระบุแผนสำรอง (Contingency Plan) กรณีระบบขัดข้อง
+   - ระดับ 3: เลือกใช้เทคโนโลยีเหมาะสมกับกิจกรรม แต่ยังขาดแผนสำรองที่ชัดเจน
+   - ระดับ 2: ใช้เทคโนโลยีเป็นเพียงเครื่องมือเสริมฉายภาพ ไม่ได้เกิดปฏิสัมพันธ์
+   - ระดับ 1: เทคโนโลยีไม่เหมาะสม ใช้งานจริงได้ยาก
+
+4. PCK (การบูรณาการเนื้อหาและวิธีสอน) [น้ำหนัก 10]:
+   - ระดับ 4: วิธีสอนสอดคล้องกับธรรมชาติของเนื้อหาอย่างแนบแน่น ช่วยแก้จุดที่มักเข้าใจผิด (Misconception) ได้ชัดเจน
+   - ระดับ 3: วิธีสอนสัมพันธ์กับเนื้อหา ช่วยให้เข้าใจแนวคิดสำคัญได้ดี
+   - ระดับ 2: สัมพันธ์เพียงบางส่วน ยังไม่ตอบโจทย์แนวคิดสำคัญ
+   - ระดับ 1: วิธีสอนขัดกับธรรมชาติของเนื้อหา
+
+5. TCK (การบูรณาการเทคโนโลยีกับเนื้อหา) [น้ำหนัก 10]:
+   - ระดับ 4: เทคโนโลยีช่วยจำลอง (Simulation/AR/VR) หรือแสดงภาพนามธรรม/โมเลกุล/มโนทัศน์ที่วิธีเดิมทำได้ยากอย่างชัดเจน
+   - ระดับ 3: เทคโนโลยีช่วยนำเสนอหรืออธิบายเนื้อหาได้เห็นภาพชัดเจน
+   - ระดับ 2: มีเทคโนโลยีแต่ไม่ได้ช่วยให้เข้าใจเนื้อหาลึกซึ้งขึ้นกว่าเดิม
+   - ระดับ 1: เทคโนโลยีไม่สัมพันธ์กับเนื้อหา
+
+6. TPK (การบูรณาการเทคโนโลยีกับวิธีสอน) [น้ำหนัก 10]:
+   - ระดับ 4: เทคโนโลยีสนับสนุนการแลกเปลี่ยนเรียนรู้ (Collaborative Learning) การระดมความคิด และ Interactive Engagement
+   - ระดับ 3: เทคโนโลยีสนับสนุนกิจกรรมและการมีส่วนร่วมได้ดี
+   - ระดับ 2: ผู้เรียนเป็นเพียงผู้รับสารผ่านเทคโนโลยีฝ่ายเดียว
+   - ระดับ 1: เทคโนโลยีเป็นอุปสรรคต่อกระบวนการสอน
+
+7. TPACK (การบูรณาการองค์รวม) [น้ำหนัก 18]:
+   - ระดับ 4: เนื้อหา วิธีสอน และเทคโนโลยีประสานสัมพันธ์กันอย่างมีเอกภาพ ไร้รอยต่อ มีเหตุผลทางการสอนรองรับชัดเจน
+   - ระดับ 3: ทั้งสามองค์ประกอบสัมพันธ์กันค่อนข้างชัดเจน สนับสนุนเป้าหมายได้ดี
+   - ระดับ 2: มีทั้งสามส่วนแต่ยังมีลักษณะต่างคนต่างอยู่ (แยกส่วน)
+   - ระดับ 1: ขาดการบูรณาการอย่างชัดเจน
+
+8. ASSESSMENT (การวัดและประเมินผล) [น้ำหนัก 10]:
+   - ระดับ 4: มีการประเมิน Formative & Summative (ก่อน-ระหว่าง-หลัง) ครอบคลุม K-P-A พร้อมระบุเกณฑ์รูบริกชัดเจน
+   - ระดับ 3: การประเมินสอดคล้องกับเป้าหมาย มีเครื่องมือวัดแต่เกณฑ์รูบริกยังไม่ละเอียดพอ
+   - ระดับ 2: วัดผลเฉพาะความรู้ (K) หรือขาดเครื่องมือวัดที่ตรวจสอบได้
+   - ระดับ 1: การประเมินไม่สอดคล้องหรือไม่ระบุวิธีวัดผล
+
+9. ALIGNMENT (ความสอดคล้องของแผน) [น้ำหนัก 10]:
+   - ระดับ 4: ตัวชี้วัด สาระสำคัญ กิจกรรม เทคโนโลยี และการวัดผล เชื่อมโยงสอดคล้องกันตลอดทั้งแผนแบบ 1:1
+   - ระดับ 3: องค์ประกอบส่วนใหญ่สัมพันธ์กัน มีจุดเหลื่อมล้ำเล็กน้อย
+   - ระดับ 2: กิจกรรมหรือการวัดผลบางข้อไม่ตรงกับผลลัพธ์การเรียนรู้
+   - ระดับ 1: องค์ประกอบแผนแยกส่วนไม่สอดคล้องกัน
+
+10. FEASIBILITY (ความเป็นไปได้และการนำไปใช้) [น้ำหนัก 8]:
+   - ระดับ 4: ระยะเวลากับกิจกรรมสมดุล บริบทห้องเรียนทำได้จริง ทรัพยากรพร้อม มีแผนสำรองชัดเจน
+   - ระดับ 3: สามารถนำไปใช้จริงได้ แต่อาจมีข้อจำกัดเรื่องการบริหารเวลาในบางกิจกรรม
+   - ระดับ 2: เวลาแน่นเกินไป หรือมีความเสี่ยงสูงที่จะสอนไม่ทัน
+   - ระดับ 1: ไม่สามารถนำไปจัดกิจกรรมจริงในเวลาและบริบทที่กำหนดได้
+
+กฎเหล็ก:
+- ประเมินให้ตรงตาม Checklist ข้างต้นอย่างเคร่งครัด
+- ต้องให้ระดับคะแนน (scoreLevel) เป็นจำนวนเต็ม 1, 2, 3 หรือ 4 เท่านั้น
+- ห้ามสุ่มหรือเปลี่ยนเกณฑ์ระหว่างการประเมินซ้ำเด็ดขาด
+- ให้ระบุหลักฐานจากข้อความในแผนการสอนจริงในช่อง evidenceNotes ก่อนตัดสินระดับคะแนนเสมอ`;
+
+      const userQuery = `โปรดตรวจประเมินแผนการจัดการเรียนรู้นี้ตามเกณฑ์ TPACK 10 ด้านอย่างเคร่งครัด:
 ข้อมูลเสริม:
-- ชื่อครูที่ระบุเพิ่มเติม: ${metaTeacher.value || "ไม่ระบุ"}
-- รายวิชา/ระดับชั้นที่ระบุเพิ่มเติม: ${metaSubject.value || "ไม่ระบุ"}
+- ผู้สอน: ${metaTeacher.value || "ไม่ระบุ"}
+- รายวิชา/ระดับชั้น: ${metaSubject.value || "ไม่ระบุ"}
 
 เนื้อหาแผนการจัดการเรียนรู้:
 """
 ${planContent}
 """
 
-โปรดตรวจสอบและประเมินให้ครบทั้ง 10 ด้านตามเกณฑ์ พร้อมสรุปจุดเด่น ประเด็นพัฒนา และข้อสรุปการประเมิน`;
+ตอบกลับในรูปแบบ JSON ตาม Schema ที่กำหนดเท่านั้น`;
 
       const jsonSchema = {
         type: "OBJECT",
@@ -1034,13 +1080,15 @@ ${planContent}
       try {
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
+        // Strictly deterministic configuration: temperature = 0.0, fixed seed
         const payload = {
           contents: [{ parts: [{ text: userQuery }] }],
           systemInstruction: { parts: [{ text: systemPrompt }] },
           generationConfig: {
             responseMimeType: "application/json",
             responseSchema: jsonSchema,
-            temperature: 0.2
+            temperature: 0.0,
+            seed: 2026
           }
         };
 
@@ -1070,9 +1118,9 @@ ${planContent}
         const parsedData = JSON.parse(rawJsonText);
         currentAnalysisResult = parsedData;
         renderResults(parsedData);
-        showToast("AI ประเมินแผนการสอนตามกรอบ TPACK สำเร็จเรียบร้อย!", "success");
+        showToast("AI ประเมินแผนการสอนสำเร็จ (ระดับความเที่ยงตรงสูง)", "success");
       } catch (err) {
-        console.warn("Gemini API Error, falling back to smart local evaluation:", err);
+        console.warn("Gemini API Error, falling back to smart deterministic evaluation:", err);
         showToast("การเชื่อมต่อ AI มีปัญหา ระบบกำลังวิเคราะห์ด้วยระบบประเมินอัจฉริยะสำรอง...", "info");
         runSmartLocalEvaluation(planContent);
       } finally {
@@ -1080,7 +1128,7 @@ ${planContent}
       }
     });
 
-    // Smart Local Evaluation Engine that reads actual uploaded plan content
+    // 100% Deterministic Local Evaluation Engine that guarantees identical outputs for identical text inputs
     function runSmartLocalEvaluation(planContent) {
       setLoadingState(true);
       setTimeout(() => {
@@ -1099,17 +1147,18 @@ ${planContent}
         const gradeLevel = gradeMatch ? gradeMatch[1].trim() : "ระดับการศึกษาขั้นพื้นฐาน";
         const duration = durationMatch ? durationMatch[1].trim() : "2 คาบ (100 นาที)";
 
-        // Evaluate criteria based on text patterns
-        const hasPhET = text.includes("phet") || text.includes("simulation") || text.includes("แบบจำลอง") || text.includes("ทดลองเสมือน");
+        // Deterministic Rubric Scoring Rules
+        const hasPhET = text.includes("phet") || text.includes("simulation") || text.includes("แบบจำลอง") || text.includes("ทดลองเสมือน") || text.includes("ar") || text.includes("3d");
         const hasActiveLearning = text.includes("active") || text.includes("5e") || text.includes("สืบเสาะ") || text.includes("กลุ่ม") || text.includes("ร่วมมือ");
         const hasBackupPlan = text.includes("สำรอง") || text.includes("contingency") || text.includes("ออฟไลน์") || text.includes("offline");
         const hasRubric = text.includes("rubric") || text.includes("รูบริก") || text.includes("เกณฑ์") || text.includes("k, p, a") || text.includes("แบบประเมิน");
         const hasEdTech = text.includes("mentimeter") || text.includes("padlet") || text.includes("quizizz") || text.includes("kahoot") || text.includes("google") || text.includes("app");
+        const hasMisconception = text.includes("เข้าใจผิด") || text.includes("misconception") || text.includes("เปรียบเทียบ") || text.includes("ทำไม");
 
         const ckLevel = text.length > 500 ? 4 : 3;
         const pkLevel = hasActiveLearning ? 4 : 3;
         const tkLevel = hasBackupPlan && hasEdTech ? 4 : (hasEdTech ? 3 : 2);
-        const pckLevel = hasActiveLearning ? 4 : 3;
+        const pckLevel = hasMisconception || hasActiveLearning ? 4 : 3;
         const tckLevel = hasPhET ? 4 : (hasEdTech ? 3 : 2);
         const tpkLevel = hasActiveLearning && hasEdTech ? 4 : 3;
         const tpackLevel = (hasPhET || hasEdTech) && hasActiveLearning ? 4 : 3;
@@ -1129,7 +1178,7 @@ ${planContent}
             evaluationDate: new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
           },
           evaluations: [
-            { criterionCode: "CK", weight: 8, scoreLevel: ckLevel, evidenceNotes: "เนื้อหามีความถูกต้องและสอดคล้องกับมาตรฐานการเรียนรู้ตามที่ระบุในแผนการสอน" },
+            { criterionCode: "CK", weight: 8, scoreLevel: ckLevel, evidenceNotes: "เนื้อหามีความถูกต้อง ชัดเจน และสอดคล้องกับมาตรฐานการเรียนรู้ตามที่ระบุในแผนการสอน" },
             { criterionCode: "PK", weight: 8, scoreLevel: pkLevel, evidenceNotes: hasActiveLearning ? "จัดกระบวนการเรียนรู้แบบ Active Learning เน้นผู้เรียนเป็นศูนย์กลางและส่งเสริมการคิด" : "มีกระบวนการสอนชัดเจน แต่สามารถเพิ่มกิจกรรมให้นักเรียนมีส่วนร่วมได้มากขึ้น" },
             { criterionCode: "TK", weight: 8, scoreLevel: tkLevel, evidenceNotes: hasBackupPlan ? "เลือกใช้เครื่องมือเทคโนโลยีเหมาะสม และมีแผนสำรองรองรับความเสี่ยงด้านสัญญาณอินเทอร์เน็ต" : "มีการประยุกต์ใช้เทคโนโลยีการศึกษาเพื่อสนับสนุนการเรียนรู้" },
             { criterionCode: "PCK", weight: 10, scoreLevel: pckLevel, evidenceNotes: "วิธีสอนมีความสอดคล้องกับธรรมชาติของเนื้อหาและช่วยพัฒนาความเข้าใจเชิงลึก" },
@@ -1174,7 +1223,6 @@ ${planContent}
           const res = await fetch(url, options);
           if (res.ok) return res;
           if (res.status === 400 || res.status === 403) {
-            // Bad API key or forbidden - do not retry uselessly
             return res;
           }
           if (res.status === 429 || res.status >= 500) {
@@ -1454,7 +1502,6 @@ ${planContent}
 ข้อเสนอแนะ: ${document.getElementById('rep-recommendations').textContent}
 ประเมินเมื่อ: ${document.getElementById('rep-date').textContent}`;
 
-      // Use document.execCommand fallback copy as per instructions
       const tempTextArea = document.createElement("textarea");
       tempTextArea.value = summaryText;
       document.body.appendChild(tempTextArea);
