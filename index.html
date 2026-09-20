@@ -144,6 +144,7 @@
       <div class="flex items-center justify-between pt-2 border-t border-slate-100">
         <button id="btn-clear-key" type="button" class="text-xs text-rose-600 hover:underline">ล้างคีย์ที่บันทึกไว้</button>
         <div class="flex gap-2">
+          <button id="btn-cancel-key" type="button" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium">ยกเลิก</button>
           <button id="btn-demo-mode-select" type="button" class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 text-xs font-medium">ใช้โหมดออฟไลน์ทันที</button>
           <button id="btn-save-key" type="button" class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-sm">บันทึกคีย์</button>
         </div>
@@ -185,22 +186,39 @@
               <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
               1. นำเข้าแผนการจัดการเรียนรู้
             </h3>
-            <span class="text-xs text-slate-400">PDF, DOCX, TXT</span>
+            <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">DOCX, PDF, TXT</span>
           </div>
 
-          <!-- Drag and drop zone -->
-          <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/40 rounded-xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 relative">
-            <input type="file" id="file-input" accept=".pdf,.docx,.txt" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-            <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+          <!-- Drag and drop zone with accessible label and dedicated button -->
+          <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/40 rounded-xl p-5 text-center transition flex flex-col items-center justify-center gap-2.5 relative group">
+            <input type="file" id="file-input" accept=".pdf,.docx,.doc,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" title="คลิกเพื่อเลือกไฟล์" />
+            
+            <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform pointer-events-none">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
             </div>
-            <div>
-              <p class="text-sm font-medium text-slate-700">คลิกเพื่ออัปโหลด หรือลากไฟล์มาวางที่นี่</p>
-              <p class="text-xs text-slate-400 mt-0.5">รองรับไฟล์เอกสารแผนการสอน Word (.docx), PDF (.pdf) หรือ Text (.txt)</p>
+            
+            <div class="pointer-events-none space-y-1">
+              <p class="text-sm font-semibold text-slate-700">คลิกที่นี่เพื่อเลือกไฟล์ หรือลากไฟล์มาวาง</p>
+              <p class="text-xs text-slate-500">รองรับ Word (.docx), PDF (.pdf) และ Text (.txt)</p>
             </div>
-            <div id="file-status" class="hidden text-xs font-medium px-3 py-1 bg-blue-100 text-blue-700 rounded-full flex items-center gap-1.5 mt-2">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              <span id="file-name">filename.docx</span>
+
+            <div class="pointer-events-none">
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 group-hover:bg-blue-700 text-white rounded-lg text-xs font-medium shadow-sm transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                เปิดไฟล์จากเครื่อง
+              </span>
+            </div>
+
+            <!-- Upload progress / file status badge -->
+            <div id="file-status" class="hidden z-30 text-xs font-medium px-3.5 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg flex items-center justify-between gap-2 w-full max-w-sm mt-1">
+              <div class="flex items-center gap-1.5 truncate">
+                <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span id="file-name" class="truncate font-semibold">filename.docx</span>
+                <span id="file-size" class="text-slate-400 font-normal text-[10px]"></span>
+              </div>
+              <button id="btn-remove-file" type="button" class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer" title="เอาไฟล์ออก">
+                &times;
+              </button>
             </div>
           </div>
 
@@ -641,6 +659,8 @@
     const statusCard = document.getElementById('status-card');
     const btnPrint = document.getElementById('btn-print');
     const btnCopySummary = document.getElementById('btn-copy-summary');
+    const btnRemoveFile = document.getElementById('btn-remove-file');
+    const fileSizeDisplay = document.getElementById('file-size');
 
     // API Key Modal Elements
     const btnApiKeyModal = document.getElementById('btn-apikey-modal');
@@ -675,7 +695,9 @@
     });
 
     [btnCloseModal, btnCancelKey].forEach(el => {
-      el.addEventListener('click', () => apikeyModal.classList.add('hidden'));
+      if (el) {
+        el.addEventListener('click', () => apikeyModal.classList.add('hidden'));
+      }
     });
 
     btnSaveKey.addEventListener('click', () => {
@@ -735,24 +757,40 @@
       showToast("ล้างข้อมูลเรียบร้อยแล้ว", "info");
     });
 
-    // File drag and drop
+    if (btnRemoveFile) {
+      btnRemoveFile.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fileInput.value = "";
+        fileStatus.classList.add('hidden');
+        planTextArea.value = "";
+        charCountDisplay.textContent = "0 ตัวอักษร";
+        showToast("นำไฟล์ออกเรียบร้อยแล้ว", "info");
+      });
+    }
+
+    // Prevent default drag behaviors on window to avoid browser navigating away on misplaced drops
+    window.addEventListener('dragover', (e) => e.preventDefault(), false);
+    window.addEventListener('drop', (e) => e.preventDefault(), false);
+
+    // File drag and drop interactions on zone
     ['dragenter', 'dragover'].forEach(eventName => {
       dropZone.addEventListener(eventName, (e) => {
         e.preventDefault();
-        dropZone.classList.add('border-blue-500', 'bg-blue-50/60');
+        dropZone.classList.add('border-blue-500', 'bg-blue-50/80');
       }, false);
     });
 
     ['dragleave', 'drop'].forEach(eventName => {
       dropZone.addEventListener(eventName, (e) => {
         e.preventDefault();
-        dropZone.classList.remove('border-blue-500', 'bg-blue-50/60');
+        dropZone.classList.remove('border-blue-500', 'bg-blue-50/80');
       }, false);
     });
 
     dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
       const dt = e.dataTransfer;
-      const files = dt.files;
+      const files = dt ? dt.files : null;
       if (files && files.length > 0) {
         handleFile(files[0]);
       }
@@ -764,9 +802,28 @@
       }
     });
 
+    // Helper: Initialize PDF.js worker safely via Blob to avoid CORS cross-origin worker restriction
+    function initPdfWorker() {
+      if (window.pdfjsLib && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        try {
+          const workerCode = `importScripts('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');`;
+          const blob = new Blob([workerCode], { type: 'application/javascript' });
+          pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+        } catch (err) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+      }
+    }
+
     async function handleFile(file) {
+      if (!file) return;
+
       const ext = file.name.split('.').pop().toLowerCase();
       fileNameDisplay.textContent = file.name;
+      if (fileSizeDisplay) {
+        const sizeKb = Math.round(file.size / 1024);
+        fileSizeDisplay.textContent = sizeKb > 1024 ? `(${(sizeKb / 1024).toFixed(1)} MB)` : `(${sizeKb} KB)`;
+      }
       fileStatus.classList.remove('hidden');
       showToast(`กำลังอ่านข้อมูลจาก ${file.name}...`, "info");
 
@@ -776,36 +833,85 @@
           reader.onload = (e) => {
             planTextArea.value = e.target.result;
             charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
-            showToast("นำเข้าไฟล์ข้อความสำเร็จ", "success");
+            autoDetectMetadata(e.target.result);
+            showToast("นำเข้าไฟล์ข้อความ (.txt) สำเร็จ", "success");
           };
           reader.readAsText(file);
         } else if (ext === 'docx') {
+          if (!window.mammoth) {
+            throw new Error("Mammoth library ไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง");
+          }
           const arrayBuffer = await file.arrayBuffer();
           const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-          planTextArea.value = result.value;
-          charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
+          const text = result.value.trim();
+          if (!text) {
+            throw new Error("ไม่พบข้อความในไฟล์ Word (อาจเป็นเอกสารว่างหรือมีเฉพาะรูปภาพ)");
+          }
+          planTextArea.value = text;
+          charCountDisplay.textContent = `${text.length.toLocaleString()} ตัวอักษร`;
+          autoDetectMetadata(text);
           showToast("สกัดข้อความจาก Word (.docx) สำเร็จ", "success");
+        } else if (ext === 'doc') {
+          showToast("ไฟล์ .doc เป็น Word รุ่นเก่า กรุณาบันทึกเป็น .docx หรือ .pdf ก่อน หรือคัดลอกข้อความมาวางโดยตรง", "error");
         } else if (ext === 'pdf') {
+          if (!window.pdfjsLib) {
+            throw new Error("PDF.js library ไม่พร้อมใช้งาน");
+          }
+          initPdfWorker();
           const arrayBuffer = await file.arrayBuffer();
-          // Configure pdf.js worker
-          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          
+          const loadingTask = pdfjsLib.getDocument({
+            data: arrayBuffer,
+            cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+            cMapPacked: true,
+          });
+
+          const pdf = await loadingTask.promise;
           let fullText = "";
           for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
             const pageText = textContent.items.map(item => item.str).join(' ');
-            fullText += `\n--- หน้าที่ ${i} ---\n` + pageText;
+            if (pageText.trim()) {
+              fullText += `\n--- หน้าที่ ${i} ---\n` + pageText;
+            }
           }
-          planTextArea.value = fullText.trim();
-          charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
+
+          const cleanedText = fullText.trim();
+          if (!cleanedText) {
+            showToast("ไฟล์ PDF นี้เป็นไฟล์ภาพหรือสแกนเอกสาร (ไม่มีข้อความตัวอักษร) กรุณาคัดลอกข้อความมาวางแทนครับ", "error");
+            return;
+          }
+
+          planTextArea.value = cleanedText;
+          charCountDisplay.textContent = `${cleanedText.length.toLocaleString()} ตัวอักษร`;
+          autoDetectMetadata(cleanedText);
           showToast(`สกัดข้อความจาก PDF ทั้งหมด ${pdf.numPages} หน้า สำเร็จ`, "success");
         } else {
           showToast("รูปแบบไฟล์ไม่รองรับ กรุณาใช้ .docx, .pdf หรือ .txt", "error");
         }
       } catch (err) {
         console.error("File parse error:", err);
-        showToast("เกิดข้อผิดพลาดในการอ่านไฟล์ กรุณาลองคัดลอกข้อความมาวางโดยตรง", "error");
+        showToast(`อ่านไฟล์ไม่สำเร็จ: ${err.message || "กรุณาลองคัดลอกข้อความมาวางโดยตรง"}`, "error");
+      } finally {
+        // Reset file input so user can re-upload the same file if desired
+        fileInput.value = "";
+      }
+    }
+
+    // Auto-detect metadata like teacher name and subject from uploaded text
+    function autoDetectMetadata(text) {
+      if (!metaTeacher.value) {
+        const teacherMatch = text.match(/(?:ผู้สอน|ครูผู้สอน|ชื่อผู้สอน|ครู)\s*[:：]?\s*([^\n\r]+)/i);
+        if (teacherMatch && teacherMatch[1].trim().length < 50) {
+          metaTeacher.value = teacherMatch[1].trim();
+        }
+      }
+      if (!metaSubject.value) {
+        const subjectMatch = text.match(/(?:วิชา|รายวิชา)\s*[:：]?\s*([^\n\r]+)/i);
+        if (subjectMatch && subjectMatch[1].trim().length < 60) {
+          metaSubject.value = subjectMatch[1].trim();
+        }
       }
     }
 
