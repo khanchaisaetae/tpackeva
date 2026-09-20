@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบตรวจประเมินแผนการจัดการเรียนรู้ตามกรอบ TPACK ด้วย AI</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Sarabun & Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js for TPACK Radar & Bar Visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- PDF.js for parsing PDF uploads -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Mammoth.js for parsing DOCX uploads -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Prompt', 'sans-serif'],
+            sarabun: ['Sarabun', 'sans-serif'],
+          },
+          colors: {
+            tpack: {
+              50: '#eef6ff',
+              100: '#d9ebff',
+              500: '#1d6cd3',
+              600: '#1554a9',
+              700: '#124388',
+              800: '#103971',
+              900: '#0c2d59',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Prompt', sans-serif;
+      background-color: #f8fafc;
+      color: #1e293b;
+    }
+    .font-doc {
+      font-family: 'Sarabun', sans-serif;
+    }
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #printable-report, #printable-report * {
+        visibility: visible;
+      }
+      #printable-report {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 16px;
+        background: white;
+        box-shadow: none;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-blue-100 selection:text-blue-800">
+
+  <header class="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white shadow-md sticky top-0 z-40 no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap justify-between items-center gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-blue-300 font-bold text-xl shadow-inner">
+          TP
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            TPACK AI Evaluator
+            <span class="text-xs bg-blue-500/30 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full font-medium">100 คะแนนเต็ม</span>
+          </h1>
+          <p class="text-xs text-blue-200/80">ระบบตรวจประเมินแผนการจัดการเรียนรู้ตามกรอบ TPACK ด้วยปัญญาประดิษฐ์</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button id="btn-demo" type="button" class="text-xs sm:text-sm px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition border border-white/20 flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          โหลดตัวอย่างแผนฯ
+        </button>
+        <button id="btn-reset" type="button" class="text-xs sm:text-sm px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 transition border border-red-400/30">
+          ล้างข้อมูล
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Overview Banner -->
+    <section class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 no-print">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="space-y-1">
+          <h2 class="text-base font-semibold text-slate-800 flex items-center gap-2">
+            <span class="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            </span>
+            แบบประเมินแผนการจัดการเรียนรู้ตามกรอบ TPACK (Technological Pedagogical Content Knowledge)
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-500 font-sarabun leading-relaxed">
+            ประเมินครอบคลุม 10 ด้าน: CK (8), PK (8), TK (8), PCK (10), TCK (10), TPK (10), TPACK (18), การประเมิน (10), Alignment (10), และความเป็นไปได้ (8) รวมทั้งสิ้น 100 คะแนน
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+            Gemini 3 Flash Ready
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 no-print">
+      <!-- Left Column: Input Form & Upload -->
+      <div class="lg:col-span-5 space-y-4">
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 space-y-4">
+          <div class="flex items-center justify-between border-b pb-3">
+            <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+              1. นำเข้าแผนการจัดการเรียนรู้
+            </h3>
+            <span class="text-xs text-slate-400">PDF, DOCX, TXT</span>
+          </div>
+
+          <!-- Drag and drop zone -->
+          <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/40 rounded-xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 relative">
+            <input type="file" id="file-input" accept=".pdf,.docx,.txt" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+            <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-slate-700">คลิกเพื่ออัปโหลด หรือลากไฟล์มาวางที่นี่</p>
+              <p class="text-xs text-slate-400 mt-0.5">รองรับไฟล์เอกสารแผนการสอน Word (.docx), PDF (.pdf) หรือ Text (.txt)</p>
+            </div>
+            <div id="file-status" class="hidden text-xs font-medium px-3 py-1 bg-blue-100 text-blue-700 rounded-full flex items-center gap-1.5 mt-2">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span id="file-name">filename.docx</span>
+            </div>
+          </div>
+
+          <!-- Metadata override (optional inputs) -->
+          <div class="space-y-3 pt-2">
+            <label class="block text-xs font-medium text-slate-600">ข้อมูลเบื้องต้น (กรอกเพิ่มเติมหรือปล่อยให้ AI สกัดอัตโนมัติ)</label>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span class="text-slate-500 text-[11px]">ชื่อผู้รับการประเมิน:</span>
+                <input type="text" id="meta-teacher" placeholder="ครูผู้สอน..." class="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun">
+              </div>
+              <div>
+                <span class="text-slate-500 text-[11px]">รายวิชา/ระดับชั้น:</span>
+                <input type="text" id="meta-subject" placeholder="เช่น วิทยาศาสตร์ ม.3" class="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun">
+              </div>
+            </div>
+          </div>
+
+          <!-- Text content area -->
+          <div class="space-y-2">
+            <div class="flex justify-between items-center">
+              <label for="plan-text" class="text-xs font-medium text-slate-600">เนื้อหาแผนการจัดการเรียนรู้ (แก้ไขหรือวางข้อความได้)</label>
+              <span id="char-count" class="text-[11px] text-slate-400">0 ตัวอักษร</span>
+            </div>
+            <textarea id="plan-text" rows="10" placeholder="เนื้อหาแผนการสอนจะปรากฏที่นี่เมื่ออัปโหลดไฟล์ หรือท่านสามารถคัดลอกข้อความแผนการสอนมาวางในช่องนี้โดยตรง..." class="w-full text-xs font-sarabun p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 custom-scrollbar leading-relaxed resize-y"></textarea>
+          </div>
+
+          <!-- Evaluate Button -->
+          <button id="btn-evaluate" type="button" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium text-sm shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            <svg id="eval-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+            <span id="eval-btn-text">เริ่มการประเมินตามกรอบ TPACK</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Right Column: Quick Status & Instruction Guidelines -->
+      <div class="lg:col-span-7 space-y-4">
+        <!-- Criteria Reference Guide Card -->
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 space-y-4">
+          <div class="flex items-center justify-between border-b pb-3">
+            <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+              2. เกณฑ์การประเมิน 10 ด้านตามแบบประเมินมาตรฐาน
+            </h3>
+            <span class="text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-0.5 rounded-md">เกณฑ์คุณภาพ 4 ระดับ</span>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+              <span class="font-bold text-blue-600 block">CK</span>
+              <span class="text-[11px] text-slate-500">เนื้อหา</span>
+              <span class="block text-[10px] font-semibold text-slate-700 mt-1">8 คะแนน</span>
+            </div>
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+              <span class="font-bold text-blue-600 block">PK</span>
+              <span class="text-[11px] text-slate-500">การสอน</span>
+              <span class="block text-[10px] font-semibold text-slate-700 mt-1">8 คะแนน</span>
+            </div>
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+              <span class="font-bold text-blue-600 block">TK</span>
+              <span class="text-[11px] text-slate-500">เทคโนโลยี</span>
+              <span class="block text-[10px] font-semibold text-slate-700 mt-1">8 คะแนน</span>
+            </div>
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+              <span class="font-bold text-indigo-600 block">PCK</span>
+              <span class="text-[11px] text-slate-500">เนื้อหา+สอน</span>
+              <span class="block text-[10px] font-semibold text-slate-700 mt-1">10 คะแนน</span>
+            </div>
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+              <span class="font-bold text-indigo-600 block">TCK</span>
+              <span class="text-[11px] text-slate-500">เทคโน+เนื้อหา</span>
+              <span class="block text-[10px] font-semibold text-slate-700 mt-1">10 คะแนน</span>
+            </div>
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+              <span class="font-bold text-indigo-600 block">TPK</span>
+              <span class="text-[11px] text-slate-500">เทคโน+สอน</span>
+              <span class="block text-[10px] font-semibold text-slate-700 mt-1">10 คะแนน</span>
+            </div>
+            <div class="p-2.5 bg-purple-50 rounded-xl border border-purple-200 col-span-2 sm:col-span-1">
+              <span class="font-bold text-purple-700 block">TPACK</span>
+              <span class="text-[11px] text-purple-600">บูรณาการรวม</span>
+              <span class="block text-[10px] font-bold text-purple-800 mt-1">18 คะแนน (Max)</span>
+            </div>
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+              <span class="font-bold text-slate-700 block">การประเมิน</span>
+              <span class="text-[11px] text-slate-500">วัดผล</span>
+              <span class="block text-[10px] font-semibold text-slate-700 mt-1">10 คะแนน</span>
+            </div>
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+              <span class="font-bold text-slate-700 block">Alignment</span>
+              <span class="text-[11px] text-slate-500">ความสอดคล้อง</span>
+              <span class="block text-[10px] font-semibold text-slate-700 mt-1">10 คะแนน</span>
+            </div>
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+              <span class="font-bold text-slate-700 block">นำไปใช้</span>
+              <span class="text-[11px] text-slate-500">ความเป็นไปได้</span>
+              <span class="block text-[10px] font-semibold text-slate-700 mt-1">8 คะแนน</span>
+            </div>
+          </div>
+
+          <!-- Formula & Principles -->
+          <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 font-sarabun space-y-1">
+            <p class="font-semibold flex items-center gap-1.5 text-amber-800">
+              <svg class="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              สูตรการคำนวณและหลักการตัดสิน:
+            </p>
+            <p>• <strong>สูตรคำนวณ:</strong> คะแนนที่ได้ = (ระดับคุณภาพที่ประเมิน 1-4 ÷ 4) × น้ำหนักคะแนนเต็มของข้อนั้น</p>
+            <p>• <strong>หลักการตัดสิน:</strong> ไม่ให้คะแนนสูงเพียงเพราะมีเครื่องมือเทคโนโลยีหลายชนิด แต่จะพิจารณาว่าเทคโนโลยีช่วยให้ผู้เรียนเข้าใจเนื้อหา มีส่วนร่วม หรือบรรลุผลลัพธ์การเรียนรู้ได้ดีขึ้นอย่างไร</p>
+          </div>
+
+          <!-- Evaluation Progress / Empty state banner -->
+          <div id="status-card" class="rounded-xl border border-dashed border-slate-200 p-8 text-center text-slate-400 font-sarabun flex flex-col items-center justify-center space-y-2">
+            <svg class="w-10 h-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <p class="text-sm font-medium text-slate-500">พร้อมรับการประเมิน</p>
+            <p class="text-xs">อัปโหลดไฟล์แผนการสอน หรือกดปุ่ม <strong>"โหลดตัวอย่างแผนฯ"</strong> แล้วกด <strong>"เริ่มการประเมิน"</strong> เพื่อดูผลลัพธ์</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="results-wrapper" class="hidden space-y-6">
+
+      <!-- Action Toolbar (Print, Re-evaluate, Export) -->
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm no-print">
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+          <h3 class="font-bold text-slate-800 text-sm">รายงานผลการประเมินแผนการจัดการเรียนรู้ตามกรอบ TPACK</h3>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-print" type="button" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg flex items-center gap-1.5 transition shadow-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+            พิมพ์เอกสาร / บันทึกเป็น PDF
+          </button>
+          <button id="btn-copy-summary" type="button" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg flex items-center gap-1.5 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+            คัดลอกผลสรุป
+          </button>
+        </div>
+      </div>
+
+      <!-- Dashboard Visual Overview (Cards & Radar Chart) -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-6 no-print">
+        <!-- Score & Status Card -->
+        <div class="md:col-span-4 bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">ผลการประเมินรวม</span>
+            <div class="mt-3 flex items-baseline gap-2">
+              <span id="dash-total-score" class="text-5xl font-extrabold text-blue-600 font-sans">0</span>
+              <span class="text-lg font-medium text-slate-400 font-sans">/ 100 คะแนน</span>
+            </div>
+            <div class="mt-4">
+              <div class="flex justify-between text-xs font-medium text-slate-600 mb-1">
+                <span>ระดับคุณภาพ:</span>
+                <span id="dash-quality-level" class="font-bold text-blue-700">-</span>
+              </div>
+              <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                <div id="dash-progress-bar" class="bg-blue-600 h-full rounded-full transition-all duration-700" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-5 pt-4 border-t border-slate-100">
+            <span class="text-xs text-slate-500 block mb-1">ข้อสรุปการประเมิน:</span>
+            <div id="dash-conclusion-badge" class="inline-flex items-center text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700">
+              -
+            </div>
+          </div>
+        </div>
+
+        <!-- TPACK Radar Chart -->
+        <div class="md:col-span-8 bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wide">วิเคราะห์ดุลยภาพสมรรถนะ TPACK (Radar Profile)</h4>
+            <span class="text-[11px] text-slate-400 font-sarabun">เกณฑ์ 4 ระดับ (เต็ม 4.0)</span>
+          </div>
+          <div class="h-64 w-full flex items-center justify-center">
+            <canvas id="tpackChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="printable-report" class="bg-white rounded-2xl p-6 sm:p-10 border border-slate-200 shadow-md font-doc text-slate-800 space-y-6">
+
+        <!-- Report Header / Title -->
+        <div class="text-center pb-4 border-b-2 border-slate-800 space-y-1">
+          <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+            แบบประเมินแผนการจัดการเรียนรู้ตามกรอบ TPACK
+          </h2>
+          <p class="text-sm text-slate-600">
+            สำหรับประเมินความสามารถในการบูรณาการเนื้อหา วิธีสอน และเทคโนโลยี (คะแนนเต็ม 100 คะแนน)
+          </p>
+        </div>
+
+        <!-- Teacher / Lesson Info Grid -->
+        <div class="border border-slate-300 rounded-lg p-4 bg-slate-50/50 text-xs sm:text-sm space-y-2">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+            <div><strong>ชื่อผู้รับการประเมิน:</strong> <span id="rep-teacher" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
+            <div><strong>รหัส/กลุ่มสาระ:</strong> <span id="rep-group" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
+            <div><strong>รายวิชา:</strong> <span id="rep-subject" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
+            <div><strong>ระดับชั้น:</strong> <span id="rep-grade" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
+            <div><strong>หน่วยการเรียนรู้:</strong> <span id="rep-unit" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
+            <div><strong>เรื่อง:</strong> <span id="rep-topic" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
+            <div><strong>ระยะเวลา:</strong> <span id="rep-duration" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
+            <div><strong>วันที่ประเมิน:</strong> <span id="rep-date" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
+          </div>
+        </div>
+
+        <!-- 10 Criteria Detailed Table -->
+        <div class="space-y-2">
+          <h3 class="font-bold text-sm text-slate-800 flex items-center justify-between">
+            <span>แบบบันทึกคะแนนการประเมินรายด้าน (10 ด้าน)</span>
+            <span class="text-xs font-normal text-slate-500">สูตร: คะแนนที่ได้ = (ระดับ ÷ 4) × น้ำหนัก</span>
+          </h3>
+
+          <div class="overflow-x-auto border border-slate-300 rounded-lg">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-300">
+                <tr>
+                  <th class="p-2.5 text-center w-10 border-r border-slate-300">ข้อ</th>
+                  <th class="p-2.5 text-center w-16 border-r border-slate-300">รหัส</th>
+                  <th class="p-2.5 border-r border-slate-300">ด้านที่ประเมิน</th>
+                  <th class="p-2.5 text-center w-16 border-r border-slate-300">น้ำหนัก</th>
+                  <th class="p-2.5 text-center w-16 border-r border-slate-300">ระดับ (1-4)</th>
+                  <th class="p-2.5 text-center w-20 border-r border-slate-300">คะแนนที่ได้</th>
+                  <th class="p-2.5">หลักฐานสำคัญ / เหตุผลอ้างอิงจากแผนการสอน</th>
+                </tr>
+              </thead>
+              <tbody id="scores-table-body" class="divide-y divide-slate-200">
+                <!-- Injected via JavaScript -->
+              </tbody>
+              <tfoot class="bg-blue-50/80 font-bold border-t-2 border-slate-400 text-slate-900">
+                <tr>
+                  <td colspan="3" class="p-3 text-right border-r border-slate-300">คะแนนรวมสุทธิ:</td>
+                  <td class="p-3 text-center border-r border-slate-300">100</td>
+                  <td class="p-3 text-center border-r border-slate-300">-</td>
+                  <td id="table-total-score" class="p-3 text-center text-blue-700 font-sans text-sm border-r border-slate-300">0.00</td>
+                  <td class="p-3">
+                    ระดับคุณภาพ: <span id="table-quality-label" class="text-blue-800 ml-1">-</span>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- Benchmark Interpretation Reference -->
+        <div class="border border-slate-200 rounded-lg p-3 bg-slate-50 text-xs">
+          <span class="font-bold text-slate-700 block mb-1">เกณฑ์การแปลผลคะแนนรวม:</span>
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-[11px]">
+            <div class="p-1.5 rounded bg-white border border-slate-200"><span class="font-bold text-emerald-700 block">90 – 100</span>ดีเยี่ยม</div>
+            <div class="p-1.5 rounded bg-white border border-slate-200"><span class="font-bold text-blue-700 block">80 – 89</span>ดีมาก</div>
+            <div class="p-1.5 rounded bg-white border border-slate-200"><span class="font-bold text-cyan-700 block">70 – 79</span>ดี</div>
+            <div class="p-1.5 rounded bg-white border border-slate-200"><span class="font-bold text-amber-700 block">60 – 69</span>พอใช้</div>
+            <div class="p-1.5 rounded bg-white border border-slate-200"><span class="font-bold text-rose-700 block">ต่ำกว่า 60</span>ควรปรับปรุง</div>
+          </div>
+        </div>
+
+        <!-- Improvement Action Plan Table -->
+        <div class="space-y-2">
+          <h3 class="font-bold text-sm text-slate-800">แผนปรับปรุงตามผลการประเมิน (Action Plan)</h3>
+          <div class="overflow-x-auto border border-slate-300 rounded-lg">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-300">
+                <tr>
+                  <th class="p-2.5 w-1/4 border-r border-slate-300">ด้านที่ต้องพัฒนา</th>
+                  <th class="p-2.5 w-1/3 border-r border-slate-300">หลักฐานจากแผน</th>
+                  <th class="p-2.5">การปรับปรุงที่กำหนด (ตรวจสอบได้)</th>
+                </tr>
+              </thead>
+              <tbody id="action-plan-body" class="divide-y divide-slate-200">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Qualitative Summary (Strengths, Weaknesses, Suggestions) -->
+        <div class="space-y-4 pt-2">
+          <div class="border border-slate-300 rounded-lg p-3.5 space-y-1">
+            <h4 class="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5 text-emerald-800">
+              <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+              จุดเด่นของแผนการจัดการเรียนรู้
+            </h4>
+            <div id="rep-strengths" class="text-xs sm:text-sm text-slate-700 leading-relaxed font-sarabun whitespace-pre-line pl-3.5 pt-1">
+              -
+            </div>
+          </div>
+
+          <div class="border border-slate-300 rounded-lg p-3.5 space-y-1">
+            <h4 class="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5 text-amber-800">
+              <span class="w-2 h-2 rounded-full bg-amber-600"></span>
+              ประเด็นที่ควรปรับปรุงและพัฒนา
+            </h4>
+            <div id="rep-improvements" class="text-xs sm:text-sm text-slate-700 leading-relaxed font-sarabun whitespace-pre-line pl-3.5 pt-1">
+              -
+            </div>
+          </div>
+
+          <div class="border border-slate-300 rounded-lg p-3.5 space-y-1">
+            <h4 class="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5 text-blue-800">
+              <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+              ข้อเสนอแนะเพื่อการนำไปใช้สอนจริง
+            </h4>
+            <div id="rep-recommendations" class="text-xs sm:text-sm text-slate-700 leading-relaxed font-sarabun whitespace-pre-line pl-3.5 pt-1">
+              -
+            </div>
+          </div>
+        </div>
+
+        <!-- Conclusion Checkbox & Signatures Section -->
+        <div class="border-t-2 border-slate-800 pt-5 space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs sm:text-sm">
+            <span class="font-bold text-slate-800">ข้อสรุปผลการประเมิน:</span>
+            <div class="flex flex-wrap items-center gap-4">
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="conclusion-radio" id="radio-pass" class="text-blue-600">
+                <span>ผ่านโดยไม่ต้องแก้ไข</span>
+              </label>
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="conclusion-radio" id="radio-pass-mod" class="text-blue-600">
+                <span>ผ่านโดยปรับแก้เล็กน้อย</span>
+              </label>
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="conclusion-radio" id="radio-revise" class="text-blue-600">
+                <span>ให้ปรับแก้และส่งประเมินใหม่</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Official Signatures -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-4 text-center text-xs sm:text-sm">
+            <div class="space-y-3">
+              <p>ลงชื่อ ................................................................ ผู้ประเมิน</p>
+              <p>(<span id="rep-evaluator-name">ระบบ AI และคณะกรรมการผู้ตรวจประเมิน</span>)</p>
+              <p>วันที่ .......... / .......... / ....................</p>
+            </div>
+            <div class="space-y-3">
+              <p>ลงชื่อ ................................................................ ผู้รับการประเมิน</p>
+              <p>(<span id="rep-teacher-sign">................................................................</span>)</p>
+              <p>วันที่รับทราบ .......... / .......... / ....................</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 max-w-sm pointer-events-none font-sarabun">
+    <span id="toast-icon"></span>
+    <span id="toast-msg">ข้อความ</span>
+  </div>
+
+  <script>
+    // Master TPACK criteria weights and identifiers (Sum = 100)
+    const CRITERIA_DEFINITIONS = [
+      { id: "CK", name: "ความรู้ด้านเนื้อหา", weight: 8, order: 1, desc: "เนื้อหาถูกต้อง ครบถ้วน เป็นระบบ เหมาะกับระดับผู้เรียน" },
+      { id: "PK", name: "ความรู้ด้านการสอน", weight: 8, order: 2, desc: "ออกแบบกิจกรรมเน้นผู้เรียน Active Learning วิธีสอนหลากหลาย" },
+      { id: "TK", name: "ความรู้ด้านเทคโนโลยี", weight: 8, order: 3, desc: "เลือกเทคโนโลยีเหมาะสม ใช้งานได้จริง เข้าใจข้อจำกัด" },
+      { id: "PCK", name: "การบูรณาการเนื้อหาและวิธีสอน", weight: 10, order: 4, desc: "วิธีสอนสอดคล้องกับธรรมชาติของเนื้อหา แก้ความเข้าใจผิด" },
+      { id: "TCK", name: "การบูรณาการเทคโนโลยีกับเนื้อหา", weight: 10, order: 5, desc: "เทคโนโลยีช่วยจำลอง วิเคราะห์ หรือสร้างความเข้าใจที่วิธีเดิมทำได้ยาก" },
+      { id: "TPK", name: "การบูรณาการเทคโนโลยีกับวิธีสอน", weight: 10, order: 6, desc: "เทคโนโลยีส่งเสริมการมีส่วนร่วม ความคิดร่วมมือ และกระบวนการคิด" },
+      { id: "TPACK", name: "การบูรณาการองค์รวม", weight: 18, order: 7, desc: "เนื้อหา วิธีสอน และเทคโนโลยีสัมพันธ์เป็นระบบ มีเหตุผลทางการสอน" },
+      { id: "ASSESSMENT", code: "การประเมิน", name: "การวัดและประเมินผล", weight: 10, order: 8, desc: "สอดคล้องกับผลลัพธ์ ประเมินก่อน-ระหว่าง-หลัง พร้อมเกณฑ์รูบริกชัดเจน" },
+      { id: "ALIGNMENT", code: "Alignment", name: "ความสอดคล้องของแผน", weight: 10, order: 9, desc: "เป้าหมาย เนื้อหา กิจกรรม เทคโนโลยี และการวัดผลเชื่อมโยงกันตลอดแผน" },
+      { id: "FEASIBILITY", code: "การนำไปใช้", name: "ความเป็นไปได้และการนำไปใช้", weight: 8, order: 10, desc: "เวลา ทรัพยากร บริบทห้องเรียน แผนสำรอง เหมาะสมและใช้ได้จริง" }
+    ];
+
+    // High quality sample lesson plan in Thai for immediate test
+    const SAMPLE_LESSON_PLAN = `แผนการจัดการเรียนรู้ที่ 3
+กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี รายวิชา วิทยาศาสตร์กายภาพ (ว32101)
+ระดับชั้นมัธยมศึกษาปีที่ 5 ภาคเรียนที่ 1
+หน่วยการเรียนรู้ที่ 2: พันธะเคมีและสมบัติของสาร
+เรื่อง: แรงยึดเหนี่ยวระหว่างโมเลกุลโคเวเลนต์และจุดเดือดของสาร
+เวลาที่ใช้: 2 คาบ (100 นาที)
+ชื่อผู้สอน: นายธนากร สุขสมบูรณ์ โรงเรียนวิทยาศาสตร์สาธิต
+
+1. ผลลัพธ์การเรียนรู้ / ตัวชี้วัด (CK)
+- อธิบายความสัมพันธ์ระหว่างแรงยึดเหนี่ยวระหว่างโมเลกุล (แรงแผ่กระจายลอนดอน, แรงดึงดูดระหว่างขั้ว, พันธะไฮโดรเจน) กับจุดเดือดของสารโคเวเลนต์ได้ถูกต้อง
+- ทำนายลำดับจุดเดือดของสารโคเวเลนต์ที่กำหนดให้ได้
+
+2. สาระสำคัญ / ความคิดรวบยอด
+แรงยึดเหนี่ยวระหว่างโมเลกุลมีผลโดยตรงต่อพลังงานที่ต้องใช้ในการเปลี่ยนสถานะ สารที่มีพันธะไฮโดรเจนจะมีจุดเดือดสูงผิดปกติเมื่อเทียบกับโมเลกุลที่มีมวลใกล้เคียงกัน
+
+3. กิจกรรมการเรียนรู้ (Active Learning & 5E + EdTech บูรณาการ)
+ขั้นที่ 1: สร้างความสนใจ (Engagement - 15 นาที)
+- ครูให้นักเรียนสแกน QR Code เพื่อทำ Interactive Poll ผ่าน Mentimeter: "ทำไมน้ำ (H2O) มวลโมเลกุล 18 จึงมีจุดเดือดถึง 100 °C ในขณะที่ H2S ซึ่งหนักกว่า กลับเป็นแก๊สที่อุณหภูมิห้อง?"
+- นำผลโหวตและข้อสงสัยขึ้นจอเพื่อเชื่อมโยงสู่ปัญหา
+
+ขั้นที่ 2: สำรวจและค้นหา (Exploration - 35 นาที)
+- แบ่งกลุ่มนักเรียนกลุ่มละ 4 คน โดยใช้แท็บเล็ตประจำกลุ่ม
+- ใช้วิทยาการจำลองเสมือนจริง PhET Interactive Simulation เรื่อง "Molecule Polarity" และ "States of Matter: Basics" 
+- ให้นักเรียนหมุนดูทิศทางของขั้วโมเลกุลแบบ 3 มิติ และทดลองปรับอุณหภูมิเพื่อสังเกตการแยกตัวของโมเลกุลสารต่างๆ (H2O, CH4, NH3, HF) 
+- บันทึกการสังเกตลงในใบกิจกรรมดิจิทัลบน Google Slides ร่วมกันในกลุ่ม
+
+ขั้นที่ 3: อธิบายและลงข้อสรุป (Explanation - 20 นาที)
+- ตัวแทนกลุ่มใช้ Padlet สรุปแผนภาพเชื่อมโยงแรงยึดเหนี่ยวและขนาดโมเลกุล
+- ครูและนักเรียนร่วมกันสังเคราะห์ความรู้ โดยครูใช้แบบจำลอง 3D Augmented Reality (AR) บนแอปพลิเคชันเพื่อฉายภาพโครงข่ายพันธะไฮโดรเจนในโครงสร้างผลึกน้ำแข็ง
+
+ขั้นที่ 4: ขยายความรู้ (Elaboration - 20 นาที)
+- ให้นักเรียนแต่ละกลุ่มวิเคราะห์สถานการณ์จริง เช่น ทำไมมดหรือจิ้งจกเดินบนน้ำได้ และการเลือกใช้สารหล่อเย็นในเครื่องยนต์
+- เล่นเกมทดสอบความเข้าใจสั้นๆ ผ่าน Quizizz แบบ Live Competition 5 ข้อ
+
+ขั้นที่ 5: ประเมินผล (Evaluation - 10 นาที)
+- นักเรียนทำ Exit Ticket สะท้อนการเรียนรู้และสรุปข้อสงสัยผ่าน Google Forms
+- ประเมินผลงานการจำลองและการบันทึกลง Google Slides ตามรูบริก
+
+4. สื่อและเทคโนโลยีการเรียนรู้ (TK)
+1. แบบจำลองเสมือนจริง PhET Interactive Simulation
+2. เครื่องมือสร้างปฏิสัมพันธ์: Mentimeter, Quizizz, Padlet
+3. แท็บเล็ตและเครือข่ายอินเทอร์เน็ต Wi-Fi ของโรงเรียน
+*แผนสำรอง (Contingency Plan): หากระบบอินเทอร์เน็ตขัดข้อง ครูเตรียมไฟล์จำลอง PhET แบบ Offline พร้อมชุดแบบจำลองลูกบอลพลาสติก 3 มิติ (Ball-and-stick model) สำรองไว้ประจำทุกกลุ่ม
+
+5. การวัดและประเมินผล
+- ด้านความรู้ (K): ตรวจสอบจาก Exit Ticket บน Google Forms (เกณฑ์ผ่าน 70%)
+- ด้านทักษะ (P): ประเมินทักษะการใช้แบบจำลอง PhET และการทำงานร่วมกันผ่าน Rubrics
+- ด้านเจตคติ (A): ประเมินความกระตือรือร้นและการมีส่วนร่วมในชั้นเรียน`;
+
+    let currentAnalysisResult = null;
+    let tpackChartInstance = null;
+
+    const fileInput = document.getElementById('file-input');
+    const dropZone = document.getElementById('drop-zone');
+    const fileStatus = document.getElementById('file-status');
+    const fileNameDisplay = document.getElementById('file-name');
+    const planTextArea = document.getElementById('plan-text');
+    const charCountDisplay = document.getElementById('char-count');
+    const btnEvaluate = document.getElementById('btn-evaluate');
+    const evalBtnText = document.getElementById('eval-btn-text');
+    const evalIcon = document.getElementById('eval-icon');
+    const btnDemo = document.getElementById('btn-demo');
+    const btnReset = document.getElementById('btn-reset');
+    const metaTeacher = document.getElementById('meta-teacher');
+    const metaSubject = document.getElementById('meta-subject');
+
+    const resultsWrapper = document.getElementById('results-wrapper');
+    const statusCard = document.getElementById('status-card');
+    const btnPrint = document.getElementById('btn-print');
+    const btnCopySummary = document.getElementById('btn-copy-summary');
+
+    planTextArea.addEventListener('input', () => {
+      charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
+    });
+
+    btnDemo.addEventListener('click', () => {
+      planTextArea.value = SAMPLE_LESSON_PLAN;
+      metaTeacher.value = "นายธนากร สุขสมบูรณ์";
+      metaSubject.value = "วิทยาศาสตร์กายภาพ (ว32101) ม.5";
+      charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
+      showToast("โหลดตัวอย่างแผนการสอนสำเร็จ พร้อมทดสอบประเมิน", "success");
+    });
+
+    btnReset.addEventListener('click', () => {
+      planTextArea.value = "";
+      metaTeacher.value = "";
+      metaSubject.value = "";
+      fileInput.value = "";
+      fileStatus.classList.add('hidden');
+      charCountDisplay.textContent = "0 ตัวอักษร";
+      resultsWrapper.classList.add('hidden');
+      statusCard.classList.remove('hidden');
+      showToast("ล้างข้อมูลเรียบร้อยแล้ว", "info");
+    });
+
+    // File drag and drop
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropZone.classList.add('border-blue-500', 'bg-blue-50/60');
+      }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-blue-500', 'bg-blue-50/60');
+      }, false);
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      if (files && files.length > 0) {
+        handleFile(files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    async function handleFile(file) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      fileNameDisplay.textContent = file.name;
+      fileStatus.classList.remove('hidden');
+      showToast(`กำลังอ่านข้อมูลจาก ${file.name}...`, "info");
+
+      try {
+        if (ext === 'txt') {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            planTextArea.value = e.target.result;
+            charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
+            showToast("นำเข้าไฟล์ข้อความสำเร็จ", "success");
+          };
+          reader.readAsText(file);
+        } else if (ext === 'docx') {
+          const arrayBuffer = await file.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+          planTextArea.value = result.value;
+          charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
+          showToast("สกัดข้อความจาก Word (.docx) สำเร็จ", "success");
+        } else if (ext === 'pdf') {
+          const arrayBuffer = await file.arrayBuffer();
+          // Configure pdf.js worker
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          let fullText = "";
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(' ');
+            fullText += `\n--- หน้าที่ ${i} ---\n` + pageText;
+          }
+          planTextArea.value = fullText.trim();
+          charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
+          showToast(`สกัดข้อความจาก PDF ทั้งหมด ${pdf.numPages} หน้า สำเร็จ`, "success");
+        } else {
+          showToast("รูปแบบไฟล์ไม่รองรับ กรุณาใช้ .docx, .pdf หรือ .txt", "error");
+        }
+      } catch (err) {
+        console.error("File parse error:", err);
+        showToast("เกิดข้อผิดพลาดในการอ่านไฟล์ กรุณาลองคัดลอกข้อความมาวางโดยตรง", "error");
+      }
+    }
+
+    btnEvaluate.addEventListener('click', async () => {
+      const planContent = planTextArea.value.trim();
+      if (!planContent || planContent.length < 50) {
+        showToast("กรุณาใส่เนื้อหาแผนการสอนอย่างน้อย 50 ตัวอักษร", "error");
+        return;
+      }
+
+      setLoadingState(true);
+
+      const systemPrompt = `คุณคือผู้เชี่ยวชาญระดับชาติในการประเมินและนิเทศแผนการจัดการเรียนรู้ตามกรอบ TPACK (Technological Pedagogical Content Knowledge)
+ภารกิจของคุณคือวิเคราะห์แผนการจัดการเรียนรู้ที่ได้รับอย่างละเอียด เที่ยงตรง อิงตามรูบริกแบบประเมิน 100 คะแนนเต็ม
+เกณฑ์ 10 ด้านที่ต้องประเมินและน้ำหนักคะแนนเต็ม:
+1. CK (ความรู้ด้านเนื้อหา) น้ำหนัก 8 คะแนน
+2. PK (ความรู้ด้านการสอน) น้ำหนัก 8 คะแนน
+3. TK (ความรู้ด้านเทคโนโลยี) น้ำหนัก 8 คะแนน
+4. PCK (การบูรณาการเนื้อหาและวิธีสอน) น้ำหนัก 10 คะแนน
+5. TCK (การบูรณาการเทคโนโลยีกับเนื้อหา) น้ำหนัก 10 คะแนน
+6. TPK (การบูรณาการเทคโนโลยีกับวิธีสอน) น้ำหนัก 10 คะแนน
+7. TPACK (การบูรณาการองค์รวม) น้ำหนัก 18 คะแนน
+8. การประเมิน (การวัดและประเมินผล) น้ำหนัก 10 คะแนน
+9. Alignment (ความสอดคล้องของแผน) น้ำหนัก 10 คะแนน
+10. การนำไปใช้ (ความเป็นไปได้และการนำไปใช้) น้ำหนัก 8 คะแนน
+
+ระดับคุณภาพในแต่ละข้อ (scoreLevel):
+4 = ดีเยี่ยม (ครบถ้วน ชัดเจน เป็นระบบ)
+3 = ดี (เหมาะสม มีข้อบกพร่องเล็กน้อย)
+2 = พอใช้ (มีองค์ประกอบแต่ยังไม่สมบูรณ์)
+1 = ควรปรับปรุง (ขาดหรือไม่สอดคล้อง)
+
+สูตรคำนวณคะแนน: weightedScore = (scoreLevel / 4) * weight
+หลักการตัดสินสำคัญ: ไม่ให้คะแนนสูงเพียงเพราะมีเครื่องมือเทคโนโลยีหลายชนิด ให้พิจารณาว่าเทคโนโลยีช่วยส่งเสริมความเข้าใจเนื้อหา Active Learning และบรรลุผลลัพธ์การเรียนรู้ได้ดีเพียงใด
+กรุณาตอบเป็น JSON โครงสร้างตาม Schema ที่กำหนดเท่านั้น`;
+
+      const userQuery = `นี่คือแผนการจัดการเรียนรู้ที่ต้องการให้ตรวจประเมิน:
+ข้อมูลเสริม:
+- ชื่อครูที่ระบุเพิ่มเติม: ${metaTeacher.value || "ไม่ระบุ"}
+- รายวิชา/ระดับชั้นที่ระบุเพิ่มเติม: ${metaSubject.value || "ไม่ระบุ"}
+
+เนื้อหาแผนการจัดการเรียนรู้:
+"""
+${planContent}
+"""
+
+โปรดตรวจสอบและประเมินให้ครบทั้ง 10 ด้านตามเกณฑ์ พร้อมสรุปจุดเด่น ประเด็นพัฒนา และข้อสรุปการประเมิน`;
+
+      // Define structured response schema
+      const jsonSchema = {
+        type: "OBJECT",
+        properties: {
+          metadata: {
+            type: "OBJECT",
+            properties: {
+              teacherName: { type: "STRING" },
+              subjectGroup: { type: "STRING" },
+              subjectName: { type: "STRING" },
+              gradeLevel: { type: "STRING" },
+              learningUnit: { type: "STRING" },
+              topic: { type: "STRING" },
+              duration: { type: "STRING" },
+              evaluationDate: { type: "STRING" }
+            },
+            required: ["teacherName", "subjectName", "gradeLevel", "topic"]
+          },
+          evaluations: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                criterionCode: { type: "STRING", description: "CK, PK, TK, PCK, TCK, TPK, TPACK, ASSESSMENT, ALIGNMENT, FEASIBILITY" },
+                criterionName: { type: "STRING" },
+                weight: { type: "NUMBER" },
+                scoreLevel: { type: "INTEGER", description: "ระดับคุณภาพ 1, 2, 3, หรือ 4" },
+                evidenceNotes: { type: "STRING", description: "หลักฐานสำคัญหรือเหตุผลอ้างอิงจากแผนการสอน" }
+              },
+              required: ["criterionCode", "weight", "scoreLevel", "evidenceNotes"]
+            }
+          },
+          actionPlan: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                areaToImprove: { type: "STRING" },
+                evidenceFromPlan: { type: "STRING" },
+                prescribedImprovement: { type: "STRING" }
+              },
+              required: ["areaToImprove", "evidenceFromPlan", "prescribedImprovement"]
+            }
+          },
+          summary: {
+            type: "OBJECT",
+            properties: {
+              strengths: { type: "STRING", description: "จุดเด่นของแผนการจัดการเรียนรู้" },
+              improvements: { type: "STRING", description: "ประเด็นที่ควรปรับปรุง" },
+              recommendations: { type: "STRING", description: "ข้อเสนอแนะเพื่อการนำไปใช้สอนจริง" },
+              conclusion: { 
+                type: "STRING", 
+                enum: ["pass", "pass_with_revision", "need_revision"],
+                description: "pass = ผ่านโดยไม่ต้องแก้ไข, pass_with_revision = ผ่านโดยปรับแก้เล็กน้อย, need_revision = ให้ปรับแก้และส่งประเมินใหม่" 
+              }
+            },
+            required: ["strengths", "improvements", "recommendations", "conclusion"]
+          }
+        },
+        required: ["metadata", "evaluations", "actionPlan", "summary"]
+      };
+
+      try {
+        const apiKey = "";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+        const payload = {
+          contents: [{ parts: [{ text: userQuery }] }],
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: jsonSchema,
+            temperature: 0.2
+          }
+        };
+
+        const response = await fetchWithRetry(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        const candidate = result.candidates?.[0];
+        if (!candidate || !candidate.content?.parts?.[0]?.text) {
+          throw new Error("Invalid response format from Gemini API");
+        }
+
+        const rawJsonText = candidate.content.parts[0].text;
+        const parsedData = JSON.parse(rawJsonText);
+
+        currentAnalysisResult = parsedData;
+        renderResults(parsedData);
+        showToast("ประเมินแผนการสอนตามกรอบ TPACK เรียบร้อยแล้ว!", "success");
+      } catch (err) {
+        console.error("Evaluation Error:", err);
+        showToast(`เกิดข้อผิดพลาดในการประเมิน: ${err.message}`, "error");
+      } finally {
+        setLoadingState(false);
+      }
+    });
+
+    async function fetchWithRetry(url, options, maxRetries = 3) {
+      let delay = 1000;
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          const res = await fetch(url, options);
+          if (res.ok) return res;
+          if (res.status === 429 || res.status >= 500) {
+            await new Promise(r => setTimeout(r, delay));
+            delay *= 2;
+            continue;
+          }
+          return res;
+        } catch (error) {
+          if (i === maxRetries - 1) throw error;
+          await new Promise(r => setTimeout(r, delay));
+          delay *= 2;
+        }
+      }
+      return fetch(url, options);
+    }
+
+    function renderResults(data) {
+      // 1. Fill Metadata
+      const meta = data.metadata || {};
+      const teacherName = metaTeacher.value || meta.teacherName || "คุณครูผู้สอน";
+      const subjectName = metaSubject.value || meta.subjectName || "รายวิชาตามแผน";
+
+      document.getElementById('rep-teacher').textContent = teacherName;
+      document.getElementById('rep-teacher-sign').textContent = teacherName;
+      document.getElementById('rep-group').textContent = meta.subjectGroup || "กลุ่มสาระการเรียนรู้";
+      document.getElementById('rep-subject').textContent = subjectName;
+      document.getElementById('rep-grade').textContent = meta.gradeLevel || "-";
+      document.getElementById('rep-unit').textContent = meta.learningUnit || "-";
+      document.getElementById('rep-topic').textContent = meta.topic || "-";
+      document.getElementById('rep-duration').textContent = meta.duration || "-";
+      document.getElementById('rep-date').textContent = meta.evaluationDate || new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      // 2. Score calculations & Table Population
+      const tableBody = document.getElementById('scores-table-body');
+      tableBody.innerHTML = '';
+      let totalCalculatedScore = 0;
+      const radarLabels = [];
+      const radarScores = [];
+
+      CRITERIA_DEFINITIONS.forEach((def) => {
+        // Match response item
+        const evalItem = (data.evaluations || []).find(e => 
+          e.criterionCode?.toUpperCase() === def.id ||
+          (def.code && e.criterionCode?.toUpperCase() === def.code?.toUpperCase())
+        ) || {
+          scoreLevel: 3,
+          evidenceNotes: "สอดคล้องตามเกณฑ์มาตรฐาน"
+        };
+
+        const level = Math.max(1, Math.min(4, Number(evalItem.scoreLevel) || 3));
+        const weighted = (level / 4) * def.weight;
+        totalCalculatedScore += weighted;
+
+        radarLabels.push(def.code || def.id);
+        radarScores.push(level);
+
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50/80 transition";
+        tr.innerHTML = `
+          <td class="p-2.5 text-center font-medium border-r border-slate-200">${def.order}</td>
+          <td class="p-2.5 text-center font-bold text-blue-800 border-r border-slate-200">${def.code || def.id}</td>
+          <td class="p-2.5 border-r border-slate-200">
+            <div class="font-medium text-slate-800">${def.name}</div>
+            <div class="text-[11px] text-slate-400 font-normal">${def.desc}</div>
+          </td>
+          <td class="p-2.5 text-center font-medium border-r border-slate-200">${def.weight}</td>
+          <td class="p-2.5 text-center border-r border-slate-200">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full font-bold text-xs ${getLevelBadgeClass(level)}">
+              ${level}
+            </span>
+          </td>
+          <td class="p-2.5 text-center font-bold font-sans text-slate-800 border-r border-slate-200">
+            ${weighted.toFixed(2)}
+          </td>
+          <td class="p-2.5 text-slate-600 font-sarabun leading-relaxed text-[11px]">
+            ${escapeHtml(evalItem.evidenceNotes || "-")}
+          </td>
+        `;
+        tableBody.appendChild(tr);
+      });
+
+      // Total Score formatting
+      const finalScore = Math.round(totalCalculatedScore * 100) / 100;
+      const interpretation = getScoreInterpretation(finalScore);
+
+      document.getElementById('dash-total-score').textContent = finalScore.toFixed(1);
+      document.getElementById('table-total-score').textContent = finalScore.toFixed(2);
+      document.getElementById('dash-quality-level').textContent = interpretation.title;
+      document.getElementById('table-quality-label').textContent = `${interpretation.title} (${interpretation.meaning})`;
+      document.getElementById('dash-progress-bar').style.width = `${Math.min(100, finalScore)}%`;
+
+      // 3. Action Plan Table
+      const actionBody = document.getElementById('action-plan-body');
+      actionBody.innerHTML = '';
+      const actionPlans = data.actionPlan || [];
+      if (actionPlans.length === 0) {
+        actionBody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-slate-400">แผนการสอนมีคุณภาพสูง ไม่มีจุดที่ต้องปรับปรุงเร่งด่วน</td></tr>`;
+      } else {
+        actionPlans.forEach(plan => {
+          const row = document.createElement('tr');
+          row.className = "hover:bg-slate-50/70";
+          row.innerHTML = `
+            <td class="p-2.5 font-semibold text-slate-800 border-r border-slate-200 align-top">${escapeHtml(plan.areaToImprove)}</td>
+            <td class="p-2.5 text-slate-600 border-r border-slate-200 font-sarabun text-[11px] align-top">${escapeHtml(plan.evidenceFromPlan)}</td>
+            <td class="p-2.5 text-blue-900 border-slate-200 font-sarabun text-[11px] align-top font-medium">${escapeHtml(plan.prescribedImprovement)}</td>
+          `;
+          actionBody.appendChild(row);
+        });
+      }
+
+      // 4. Summaries (Strengths, Improvements, Recommendations)
+      const summary = data.summary || {};
+      document.getElementById('rep-strengths').textContent = summary.strengths || "มีการวางแผนขั้นตอนชัดเจนและคำนึงถึงผลลัพธ์การเรียนรู้";
+      document.getElementById('rep-improvements').textContent = summary.improvements || "ควรเพิ่มการวัดผลประเมินผลระหว่างทางให้ครอบคลุมยิ่งขึ้น";
+      document.getElementById('rep-recommendations').textContent = summary.recommendations || "สามารถนำไปจัดการเรียนรู้จริงได้ตามบริบทชั้นเรียน";
+
+      // 5. Conclusion Radio Selection
+      const conclusion = summary.conclusion || (finalScore >= 80 ? "pass" : (finalScore >= 60 ? "pass_with_revision" : "need_revision"));
+      const badgeElem = document.getElementById('dash-conclusion-badge');
+
+      if (conclusion === 'pass') {
+        document.getElementById('radio-pass').checked = true;
+        badgeElem.textContent = "✓ ผ่านโดยไม่ต้องแก้ไข";
+        badgeElem.className = "inline-flex items-center text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-800";
+      } else if (conclusion === 'pass_with_revision') {
+        document.getElementById('radio-pass-mod').checked = true;
+        badgeElem.textContent = "⚠ ผ่านโดยปรับแก้เล็กน้อย";
+        badgeElem.className = "inline-flex items-center text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800";
+      } else {
+        document.getElementById('radio-revise').checked = true;
+        badgeElem.textContent = "✕ ให้ปรับแก้และส่งประเมินใหม่";
+        badgeElem.className = "inline-flex items-center text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-100 text-rose-800";
+      }
+
+      // 6. Draw Chart
+      updateRadarChart(radarLabels, radarScores);
+
+      // Show container
+      resultsWrapper.classList.remove('hidden');
+      statusCard.classList.add('hidden');
+
+      // Scroll to view
+      resultsWrapper.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function updateRadarChart(labels, dataScores) {
+      const ctx = document.getElementById('tpackChart').getContext('2d');
+      if (tpackChartInstance) {
+        tpackChartInstance.destroy();
+      }
+
+      tpackChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'ระดับคุณภาพประเมิน (เต็ม 4)',
+            data: dataScores,
+            fill: true,
+            backgroundColor: 'rgba(37, 99, 235, 0.2)',
+            borderColor: 'rgb(37, 99, 235)',
+            pointBackgroundColor: 'rgb(29, 78, 216)',
+            pointBorderColor: '#fff',
+            pointHoverBackgroundColor: '#fff',
+            pointHoverBorderColor: 'rgb(29, 78, 216)',
+            borderWidth: 2,
+            pointRadius: 4,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            r: {
+              angleLines: { color: '#e2e8f0' },
+              grid: { color: '#e2e8f0' },
+              suggestedMin: 0,
+              suggestedMax: 4,
+              ticks: {
+                stepSize: 1,
+                font: { size: 10 }
+              },
+              pointLabels: {
+                font: {
+                  family: 'Prompt',
+                  size: 11,
+                  weight: '600'
+                },
+                color: '#334155'
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              display: false
+            }
+          }
+        }
+      });
+    }
+
+    function getScoreInterpretation(score) {
+      if (score >= 90) return { title: "ดีเยี่ยม", meaning: "บูรณาการ TPACK ได้อย่างเป็นระบบและมีคุณภาพสูง" };
+      if (score >= 80) return { title: "ดีมาก", meaning: "บูรณาการได้ดี มีบางประเด็นที่พัฒนาเพิ่มเติมได้" };
+      if (score >= 70) return { title: "ดี", meaning: "องค์ประกอบหลักเหมาะสม แต่การเชื่อมโยงบางส่วนยังไม่สมบูรณ์" };
+      if (score >= 60) return { title: "พอใช้", meaning: "มีองค์ประกอบ TPACK แต่ยังมีลักษณะแยกส่วนหลายประเด็น" };
+      return { title: "ควรปรับปรุง", meaning: "ควรปรับความสัมพันธ์ระหว่างเนื้อหา วิธีสอน เทคโนโลยี และการประเมิน" };
+    }
+
+    function getLevelBadgeClass(level) {
+      if (level === 4) return "bg-emerald-100 text-emerald-800";
+      if (level === 3) return "bg-blue-100 text-blue-800";
+      if (level === 2) return "bg-amber-100 text-amber-800";
+      return "bg-rose-100 text-rose-800";
+    }
+
+    function setLoadingState(isLoading) {
+      if (isLoading) {
+        btnEvaluate.disabled = true;
+        evalBtnText.textContent = "AI กำลังวิเคราะห์และคำนวณคะแนน...";
+        evalIcon.classList.add('animate-spin');
+      } else {
+        btnEvaluate.disabled = false;
+        evalBtnText.textContent = "เริ่มการประเมินตามกรอบ TPACK";
+        evalIcon.classList.remove('animate-spin');
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return "";
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function showToast(message, type = "info") {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toast-msg');
+      const toastIcon = document.getElementById('toast-icon');
+
+      toastMsg.textContent = message;
+      if (type === 'success') {
+        toastIcon.innerHTML = `<svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`;
+      } else if (type === 'error') {
+        toastIcon.innerHTML = `<svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`;
+      } else {
+        toastIcon.innerHTML = `<svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`;
+      }
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 4000);
+    }
+
+    btnPrint.addEventListener('click', () => {
+      window.print();
+    });
+
+    btnCopySummary.addEventListener('click', () => {
+      if (!currentAnalysisResult) return;
+      const score = document.getElementById('table-total-score').textContent;
+      const quality = document.getElementById('dash-quality-level').textContent;
+      const teacher = document.getElementById('rep-teacher').textContent;
+      const topic = document.getElementById('rep-topic').textContent;
+
+      const summaryText = `[ผลการประเมินแผนการจัดการเรียนรู้ตามกรอบ TPACK]
+ผู้รับการประเมิน: ${teacher}
+เรื่อง: ${topic}
+คะแนนรวม: ${score} / 100 คะแนน
+ระดับคุณภาพ: ${quality}
+จุดเด่น: ${document.getElementById('rep-strengths').textContent}
+ข้อเสนอแนะ: ${document.getElementById('rep-recommendations').textContent}
+ประเมินเมื่อ: ${document.getElementById('rep-date').textContent}`;
+
+      // Use document.execCommand fallback copy as per instructions
+      const tempTextArea = document.createElement("textarea");
+      tempTextArea.value = summaryText;
+      document.body.appendChild(tempTextArea);
+      tempTextArea.select();
+      try {
+        document.execCommand("copy");
+        showToast("คัดลอกสรุปผลการประเมินลง Clipboard เรียบร้อยแล้ว", "success");
+      } catch (err) {
+        showToast("ไม่สามารถคัดลอกข้อความได้", "error");
+      }
+      document.body.removeChild(tempTextArea);
+    });
+  </script>
+</body>
+</html>
