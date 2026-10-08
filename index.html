@@ -162,15 +162,14 @@
       </div>
 
       <div class="space-y-1.5">
-        <h3 class="font-bold text-slate-800 text-base">กำลังรอรอบโควตาของ Gemini AI</h3>
+        <h3 class="font-bold text-slate-800 text-base">Gemini จำกัดคำขอหรือโควต้า</h3>
         <p class="text-xs text-slate-500 font-sarabun leading-relaxed">
-          ท่านส่งคำขอต่อเนื่องจนถึงเพดานโควตาฟรี (จำกัด ~15 ครั้ง/นาที)<br>
-          <strong class="text-amber-700">ระบบจะไม่สลับไปใช้ออฟไลน์</strong> เพื่อรับประกันว่าทุกแผนจะได้รับการตรวจประเมินด้วย AI จริงที่มีคุณภาพสูงสุด
+          <span id="rate-limit-message">ระบบจะลองใหม่อัตโนมัติสูงสุด 3 ครั้ง</span>
         </p>
       </div>
 
       <!-- Live Countdown Dial -->
-      <div class="py-3 bg-amber-50/70 rounded-xl border border-amber-200 flex flex-col items-center justify-center">
+      <div id="rate-limit-wait-panel" class="py-3 bg-amber-50/70 rounded-xl border border-amber-200 flex flex-col items-center justify-center">
         <span class="text-xs text-amber-800 font-medium">จะเริ่มประเมินใหม่อัตโนมัติในอีก</span>
         <div class="text-4xl font-extrabold text-amber-600 font-sans my-1" id="rate-limit-countdown">25</div>
         <span class="text-[11px] text-amber-700">วินาที (กำลังรอรอบคำขอถัดไป...)</span>
@@ -180,8 +179,9 @@
         <button id="btn-cancel-rate-limit" type="button" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition">
           ยกเลิก
         </button>
+        <button id="btn-retry-rate-limit" type="button" class="hidden px-4 py-2 rounded-xl bg-blue-600 text-white text-xs">ลองใหม่ด้วยตนเอง</button>
         <button id="btn-force-offline" type="button" class="px-4 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-medium transition" title="หากไม่ต้องการรอ ให้เตรียมรายงานสำหรับผู้ประเมินตรวจทานโดยไม่มีคะแนน">
-          สลับไปใช้ออฟไลน์ชั่วคราว
+          ออฟไลน์: รอตรวจทาน ไม่มีคะแนนอัตโนมัติ
         </button>
       </div>
     </div>
@@ -693,6 +693,8 @@
       evaluationController = null;
       clearTimeout(localEvaluationTimer);
       clearInterval(countdownTimer);
+      countdownTimer = null;
+      pendingEvaluationPayload = null;
       rateLimitModal.classList.add('hidden');
       currentAnalysisResult = null;
       resultsWrapper.classList.add('hidden');
@@ -769,6 +771,14 @@
 
     let countdownTimer = null;
     let pendingEvaluationPayload = null;
+    const MAX_QUOTA_RETRIES = 3;
+    document.getElementById('btn-retry-rate-limit').addEventListener('click', () => {
+      const pending = pendingEvaluationPayload;
+      if (!pending || !isCurrentEvaluation(pending.job)) return;
+      pendingEvaluationPayload = null;
+      rateLimitModal.classList.add('hidden');
+      executeGeminiEvaluation(pending.planContent, pending.apiKey, { ...pending.job, quotaRetries: 0 });
+    });
 
     if (btnCancelRateLimit) {
       btnCancelRateLimit.addEventListener('click', () => {
@@ -1219,21 +1229,14 @@ ${planContent}
         });
 
         if (!isCurrentEvaluation(job)) return;
-        if (response.status === 429) {
-          // Rate limit reached: Trigger countdown modal and wait instead of secretly falling back!
-          handleRateLimitWaiting(planContent, apiKey, 25, job);
+        const result = await response.json().catch(() => ({}));
+        if (!isCurrentEvaluation(job)) return;
+        if (response.status === 429 || result.error?.status === "RESOURCE_EXHAUSTED") {
+          handleRateLimitWaiting(planContent, apiKey, response, result, job);
           return;
         }
-
-        const result = await response.json();
-        if (!isCurrentEvaluation(job)) return;
-
         if (!response.ok || result.error) {
           const errMsg = result.error?.message || `HTTP ${response.status}: ${response.statusText}`;
-          if (errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("quota") || errMsg.includes("rate limit")) {
-            handleRateLimitWaiting(planContent, apiKey, 25, job);
-            return;
-          }
           if (response.status === 400 || response.status === 403) {
             showToast("API Key ไม่ถูกต้อง กรุณาตรวจสอบหรือเปลี่ยนคีย์ใหม่", "error");
             btnApiKeyModal.click();
@@ -1275,22 +1278,67 @@ ${planContent}
       }
     }
 
-    function handleRateLimitWaiting(planContent, apiKey, seconds = 25, job) {
-      if (countdownTimer) clearInterval(countdownTimer);
+    function quotaRetryPolicy(response, result, retries = 0, now = Date.now(), random = Math.random) {
+      const error = result?.error || {};
+      const details = Array.isArray(error.details) ? error.details : [];
+      const violations = details.flatMap(d => Array.isArray(d.violations) ? d.violations : []);
+      const text = [error.message || '', ...violations.map(v => [v.quotaId, v.quotaMetric, v.description].filter(Boolean).join(' '))].join(' ');
+      if (/per.?day|daily|requestsperday|tokensperday/i.test(text))
+        return { stop: true, message: "API ระบุว่าโควต้ารายวันหมด หยุดลองใหม่อัตโนมัติ โปรดตรวจโควต้าใน Google AI Studio" };
+      if (retries >= MAX_QUOTA_RETRIES)
+        return { stop: true, message: "ลองใหม่อัตโนมัติครบ 3 ครั้งแล้ว โปรดตรวจโควต้าหรือลองใหม่ด้วยตนเอง" };
+      const header = response.headers?.get('Retry-After');
+      let waitMs = null;
+      if (header && /^\d+(\.\d+)?$/.test(header.trim())) waitMs = Number(header) * 1000;
+      else if (header) {
+        const date = Date.parse(header);
+        if (Number.isFinite(date)) waitMs = Math.max(0, date - now);
+      }
+      for (const detail of details) {
+        if (!String(detail['@type'] || '').endsWith('RetryInfo')) continue;
+        const delay = detail.retryDelay;
+        let ms = null;
+        if (typeof delay === 'string' && /^\d+(\.\d+)?s$/.test(delay)) ms = parseFloat(delay) * 1000;
+        else if (delay && typeof delay === 'object') {
+          const seconds = Number(delay.seconds || 0), nanos = Number(delay.nanos || 0);
+          if (Number.isFinite(seconds) && Number.isFinite(nanos) && seconds >= 0 && nanos >= 0)
+            ms = seconds * 1000 + nanos / 1000000;
+        }
+        if (ms !== null) waitMs = Math.max(waitMs || 0, ms);
+      }
+      const serverDelay = waitMs !== null;
+      if (!serverDelay) waitMs = 30000 * 2 ** retries * (1 + random() * 0.1);
+      return { stop: false, seconds: Math.max(1, Math.ceil(waitMs / 1000)), message:
+        (/per.?minute|per.?second/i.test(text) ? "API ระบุข้อจำกัดช่วงสั้น" : "ถูกจำกัดคำขอหรือโควต้า ยังระบุสาเหตุแน่ชัดไม่ได้") +
+        (serverDelay ? " — ใช้เวลารอที่ API แจ้ง" : " — เพิ่มเวลารอแต่ละครั้ง") };
+    }
 
+    function handleRateLimitWaiting(planContent, apiKey, response, result, job) {
+      if (!isCurrentEvaluation(job)) return;
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+      const retries = job.quotaRetries || 0;
+      const policy = quotaRetryPolicy(response, result, retries);
+      pendingEvaluationPayload = { planContent, apiKey, job };
       rateLimitModal.classList.remove('hidden');
-      let remaining = seconds;
-      rateLimitCountdown.textContent = remaining;
-
+      document.getElementById('rate-limit-message').textContent = policy.message +
+        (policy.stop ? "" : " — ครั้งถัดไป " + (retries + 1) + "/" + MAX_QUOTA_RETRIES + " หลังคำขอแรก");
+      document.getElementById('rate-limit-wait-panel').classList.toggle('hidden', policy.stop);
+      document.getElementById('btn-retry-rate-limit').classList.toggle('hidden', !policy.stop);
+      if (policy.stop) { setLoadingState(false); return; }
+      const deadline = Date.now() + policy.seconds * 1000;
+      rateLimitCountdown.textContent = policy.seconds;
       countdownTimer = setInterval(() => {
-        remaining -= 1;
+        if (!isCurrentEvaluation(job)) { clearInterval(countdownTimer); return; }
+        const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
         rateLimitCountdown.textContent = remaining;
-
-        if (remaining <= 0) {
+        if (remaining === 0) {
           clearInterval(countdownTimer);
+          countdownTimer = null;
+          pendingEvaluationPayload = null;
           rateLimitModal.classList.add('hidden');
-          showToast("รอบโควตารีเซ็ตแล้ว กำลังส่งแผนประเมินด้วย AI อัตโนมัติ...", "info");
-          if (isCurrentEvaluation(job)) executeGeminiEvaluation(planContent, apiKey, job);
+          showToast("ครบเวลารอ กำลังลองส่งคำขออีกครั้ง", "info");
+          executeGeminiEvaluation(planContent, apiKey, { ...job, quotaRetries: retries + 1 });
         }
       }, 1000);
     }
