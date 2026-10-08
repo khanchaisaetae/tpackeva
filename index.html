@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -134,7 +133,7 @@
             <svg class="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             สำหรับผู้ใช้งานบน GitHub Pages / เว็บไซต์ทั่วไป:
           </p>
-          <p>ท่านสามารถใส่ <strong>Google Gemini API Key</strong> เพื่อให้ AI วิเคราะห์อย่างแม่นยำ หรือเลือกใช้ <strong>"ระบบประเมินอัจฉริยะ (ไม่ต้องใช้ Key)"</strong> ได้ทันที</p>
+          <p>ท่านสามารถใส่ <strong>Google Gemini API Key</strong> เพื่อให้ AI วิเคราะห์อย่างแม่นยำ หรือเลือกใช้ <strong>"โหมดออฟไลน์สำหรับรอผู้ประเมินตรวจทาน"</strong> เพื่อเตรียมรายงานรอตรวจทาน โดยไม่มีคะแนนอัตโนมัติ</p>
         </div>
         <p class="text-[11px] text-slate-500">• รับ API Key ฟรีได้จาก <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600 underline font-medium">Google AI Studio (คลิกที่นี่)</a></p>
       </div>
@@ -181,7 +180,7 @@
         <button id="btn-cancel-rate-limit" type="button" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition">
           ยกเลิก
         </button>
-        <button id="btn-force-offline" type="button" class="px-4 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-medium transition" title="หากไม่ต้องการรอและยอมรับผลการประเมินแบบสกัดคำสำคัญ">
+        <button id="btn-force-offline" type="button" class="px-4 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-medium transition" title="หากไม่ต้องการรอ ให้เตรียมรายงานสำหรับผู้ประเมินตรวจทานโดยไม่มีคะแนน">
           สลับไปใช้ออฟไลน์ชั่วคราว
         </button>
       </div>
@@ -684,6 +683,47 @@
 - ด้านเจตคติ (A): ประเมินความกระตือรือร้นและการมีส่วนร่วมในชั้นเรียน`;
 
     let currentAnalysisResult = null;
+    let evaluationVersion = 0;
+    let evaluationController = null;
+    let localEvaluationTimer = null;
+    let fileVersion = 0;
+    function cancelEvaluation() {
+      evaluationVersion++;
+      if (evaluationController) evaluationController.abort();
+      evaluationController = null;
+      clearTimeout(localEvaluationTimer);
+      clearInterval(countdownTimer);
+      rateLimitModal.classList.add('hidden');
+      currentAnalysisResult = null;
+      resultsWrapper.classList.add('hidden');
+      statusCard.classList.remove('hidden');
+      setLoadingState(false);
+    }
+    function beginEvaluation() {
+      cancelEvaluation();
+      return { version: evaluationVersion, teacher: metaTeacher.value.trim(), subject: metaSubject.value.trim() };
+    }
+    function isCurrentEvaluation(job) { return job.version === evaluationVersion; }
+    function validateAnalysis(data) {
+      if (!data || !Array.isArray(data.evaluations) || data.evaluations.length !== CRITERIA_DEFINITIONS.length)
+        throw new Error("ผล AI ไม่ครบ 10 ด้าน กรุณาประเมินใหม่");
+      const seen = new Set();
+      for (const item of data.evaluations) {
+        const code = typeof item.criterionCode === 'string' ? item.criterionCode.toUpperCase() : '';
+        const def = CRITERIA_DEFINITIONS.find(def => def.id === code || def.code?.toUpperCase() === code);
+        if (!def || seen.has(def.id) || !Number.isInteger(item.scoreLevel) || item.scoreLevel < 1 || item.scoreLevel > 4 ||
+            typeof item.evidenceNotes !== 'string' || !item.evidenceNotes.trim())
+          throw new Error("ผล AI มีเกณฑ์ซ้ำ เกณฑ์ไม่ถูกต้อง หรือคะแนน/หลักฐานไม่สมบูรณ์ กรุณาประเมินใหม่");
+        seen.add(def.id);
+      }
+      if (!Array.isArray(data.actionPlan) || !data.summary ||
+          !['pass', 'pass_with_revision', 'need_revision'].includes(data.summary.conclusion))
+        throw new Error("ผล AI ไม่สมบูรณ์ กรุณาประเมินใหม่");
+      if (!['strengths', 'improvements', 'recommendations'].every(key => typeof data.summary[key] === 'string') ||
+          !data.actionPlan.every(plan => plan && ['areaToImprove', 'evidenceFromPlan', 'prescribedImprovement'].every(key => typeof plan[key] === 'string')))
+        throw new Error("ข้อความสรุปหรือแผนปรับปรุงไม่ถูกต้อง กรุณาประเมินใหม่");
+      return data;
+    }
     let tpackChartInstance = null;
 
     const fileInput = document.getElementById('file-input');
@@ -706,6 +746,8 @@
     const btnCopySummary = document.getElementById('btn-copy-summary');
     const btnRemoveFile = document.getElementById('btn-remove-file');
     const fileSizeDisplay = document.getElementById('file-size');
+
+    [metaTeacher, metaSubject].forEach(input => input.addEventListener('input', cancelEvaluation));
 
     // API Key Modal Elements
     const btnApiKeyModal = document.getElementById('btn-apikey-modal');
@@ -730,9 +772,7 @@
 
     if (btnCancelRateLimit) {
       btnCancelRateLimit.addEventListener('click', () => {
-        if (countdownTimer) clearInterval(countdownTimer);
-        rateLimitModal.classList.add('hidden');
-        setLoadingState(false);
+        cancelEvaluation();
         showToast("ยกเลิกการรอคิวประเมินแล้ว", "info");
       });
     }
@@ -809,10 +849,14 @@
     });
 
     planTextArea.addEventListener('input', () => {
+      fileVersion++;
+      cancelEvaluation();
       charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
     });
 
     btnDemo.addEventListener('click', () => {
+      fileVersion++;
+      cancelEvaluation();
       planTextArea.value = SAMPLE_LESSON_PLAN;
       metaTeacher.value = "นายธนากร สุขสมบูรณ์";
       metaSubject.value = "วิทยาศาสตร์กายภาพ (ว32101) ม.5";
@@ -821,6 +865,8 @@
     });
 
     btnReset.addEventListener('click', () => {
+      fileVersion++;
+      cancelEvaluation();
       planTextArea.value = "";
       metaTeacher.value = "";
       metaSubject.value = "";
@@ -834,6 +880,8 @@
 
     if (btnRemoveFile) {
       btnRemoveFile.addEventListener('click', (e) => {
+      fileVersion++;
+      cancelEvaluation();
         e.stopPropagation();
         fileInput.value = "";
         fileStatus.classList.add('hidden');
@@ -892,85 +940,69 @@
 
     async function handleFile(file) {
       if (!file) return;
-
+      const version = ++fileVersion;
+      cancelEvaluation();
+      planTextArea.value = "";
+      metaTeacher.value = "";
+      metaSubject.value = "";
+      charCountDisplay.textContent = "0 ตัวอักษร";
+      fileStatus.classList.add('hidden');
+      btnEvaluate.disabled = true;
       const ext = file.name.split('.').pop().toLowerCase();
-      fileNameDisplay.textContent = file.name;
-      if (fileSizeDisplay) {
-        const sizeKb = Math.round(file.size / 1024);
-        fileSizeDisplay.textContent = sizeKb > 1024 ? `(${(sizeKb / 1024).toFixed(1)} MB)` : `(${sizeKb} KB)`;
-      }
-      fileStatus.classList.remove('hidden');
       showToast(`กำลังอ่านข้อมูลจาก ${file.name}...`, "info");
-
       try {
+        let text = "";
         if (ext === 'txt') {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            planTextArea.value = e.target.result;
-            charCountDisplay.textContent = `${planTextArea.value.length.toLocaleString()} ตัวอักษร`;
-            autoDetectMetadata(e.target.result);
-            showToast("นำเข้าไฟล์ข้อความ (.txt) สำเร็จ", "success");
-          };
-          reader.readAsText(file);
+          text = await file.text();
         } else if (ext === 'docx') {
-          if (!window.mammoth) {
-            throw new Error("Mammoth library ไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง");
-          }
+          if (!window.mammoth) throw new Error("Mammoth library ไม่พร้อมใช้งาน");
           const arrayBuffer = await file.arrayBuffer();
-          const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-          const text = result.value.trim();
-          if (!text) {
-            throw new Error("ไม่พบข้อความในไฟล์ Word (อาจเป็นเอกสารว่างหรือมีเฉพาะรูปภาพ)");
-          }
-          planTextArea.value = text;
-          charCountDisplay.textContent = `${text.length.toLocaleString()} ตัวอักษร`;
-          autoDetectMetadata(text);
-          showToast("สกัดข้อความจาก Word (.docx) สำเร็จ", "success");
-        } else if (ext === 'doc') {
-          showToast("ไฟล์ .doc เป็น Word รุ่นเก่า กรุณาบันทึกเป็น .docx หรือ .pdf ก่อน หรือคัดลอกข้อความมาวางโดยตรง", "error");
+          if (version !== fileVersion) return;
+          text = (await mammoth.extractRawText({ arrayBuffer })).value;
         } else if (ext === 'pdf') {
-          if (!window.pdfjsLib) {
-            throw new Error("PDF.js library ไม่พร้อมใช้งาน");
-          }
+          if (!window.pdfjsLib) throw new Error("PDF.js library ไม่พร้อมใช้งาน");
           initPdfWorker();
           const arrayBuffer = await file.arrayBuffer();
-          
-          const loadingTask = pdfjsLib.getDocument({
+          if (version !== fileVersion) return;
+          const pdf = await pdfjsLib.getDocument({
             data: arrayBuffer,
             cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-            cMapPacked: true,
-          });
-
-          const pdf = await loadingTask.promise;
-          let fullText = "";
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items.map(item => item.str).join(' ');
-            if (pageText.trim()) {
-              fullText += `\n--- หน้าที่ ${i} ---\n` + pageText;
+            cMapPacked: true
+          }).promise;
+          try {
+            for (let i = 1; i <= pdf.numPages; i++) {
+              if (version !== fileVersion) return;
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              const pageText = content.items.map(item => item.str).join(' ');
+              if (pageText.trim()) text += `\n--- หน้าที่ ${i} ---\n${pageText}`;
             }
+          } finally {
+            await pdf.destroy();
           }
-
-          const cleanedText = fullText.trim();
-          if (!cleanedText) {
-            showToast("ไฟล์ PDF นี้เป็นไฟล์ภาพหรือสแกนเอกสาร (ไม่มีข้อความตัวอักษร) กรุณาคัดลอกข้อความมาวางแทนครับ", "error");
-            return;
-          }
-
-          planTextArea.value = cleanedText;
-          charCountDisplay.textContent = `${cleanedText.length.toLocaleString()} ตัวอักษร`;
-          autoDetectMetadata(cleanedText);
-          showToast(`สกัดข้อความจาก PDF ทั้งหมด ${pdf.numPages} หน้า สำเร็จ`, "success");
+        } else if (ext === 'doc') {
+          throw new Error("กรุณาบันทึกไฟล์ .doc เป็น .docx หรือ .pdf ก่อน");
         } else {
-          showToast("รูปแบบไฟล์ไม่รองรับ กรุณาใช้ .docx, .pdf หรือ .txt", "error");
+          throw new Error("รูปแบบไฟล์ไม่รองรับ กรุณาใช้ .docx, .pdf หรือ .txt");
         }
+        if (version !== fileVersion) return;
+        text = text.trim();
+        if (!text) throw new Error("ไม่พบข้อความในไฟล์ (เอกสารอาจว่างหรือเป็นภาพสแกน)");
+        planTextArea.value = text;
+        charCountDisplay.textContent = `${text.length.toLocaleString()} ตัวอักษร`;
+        autoDetectMetadata(text);
+        fileNameDisplay.textContent = file.name;
+        if (fileSizeDisplay) fileSizeDisplay.textContent = `(${Math.round(file.size / 1024)} KB)`;
+        fileStatus.classList.remove('hidden');
+        showToast("นำเข้าไฟล์สำเร็จ", "success");
       } catch (err) {
-        console.error("File parse error:", err);
-        showToast(`อ่านไฟล์ไม่สำเร็จ: ${err.message || "กรุณาลองคัดลอกข้อความมาวางโดยตรง"}`, "error");
+        if (version !== fileVersion) return;
+        showToast(`อ่านไฟล์ไม่สำเร็จ: ${err.message}`, "error");
       } finally {
-        // Reset file input so user can re-upload the same file if desired
-        fileInput.value = "";
+        if (version === fileVersion) {
+          fileInput.value = "";
+          btnEvaluate.disabled = false;
+        }
       }
     }
 
@@ -1009,8 +1041,10 @@
       executeGeminiEvaluation(planContent, apiKey);
     });
 
-    async function executeGeminiEvaluation(planContent, apiKey) {
+    async function executeGeminiEvaluation(planContent, apiKey, job = beginEvaluation()) {
+      if (!isCurrentEvaluation(job)) return;
       setLoadingState(true);
+      evaluationController = new AbortController();
 
       const systemPrompt = `คุณคือผู้เชี่ยวชาญระดับชาติในการประเมินและนิเทศแผนการจัดการเรียนรู้ตามกรอบ TPACK (Technological Pedagogical Content Knowledge)
 คุณต้องประเมินอย่างเที่ยงตรง เป็นกลาง และคงเส้นคงวา (Reliable & Deterministic) โดยยึดตามหลักฐานที่ปรากฏในแผนการสอนจริงเท่านั้น
@@ -1084,8 +1118,8 @@
 
       const userQuery = `โปรดตรวจประเมินแผนการจัดการเรียนรู้นี้ตามเกณฑ์ TPACK 10 ด้านอย่างเคร่งครัด:
 ข้อมูลเสริม:
-- ผู้สอน: ${metaTeacher.value || "ไม่ระบุ"}
-- รายวิชา/ระดับชั้น: ${metaSubject.value || "ไม่ระบุ"}
+- ผู้สอน: ${job.teacher || "ไม่ระบุ"}
+- รายวิชา/ระดับชั้น: ${job.subject || "ไม่ระบุ"}
 
 เนื้อหาแผนการจัดการเรียนรู้:
 """
@@ -1113,13 +1147,15 @@ ${planContent}
           },
           evaluations: {
             type: "ARRAY",
+            minItems: 10,
+            maxItems: 10,
             items: {
               type: "OBJECT",
               properties: {
-                criterionCode: { type: "STRING", description: "CK, PK, TK, PCK, TCK, TPK, TPACK, ASSESSMENT, ALIGNMENT, FEASIBILITY" },
+                criterionCode: { type: "STRING", enum: CRITERIA_DEFINITIONS.map(def => def.id), description: "CK, PK, TK, PCK, TCK, TPK, TPACK, ASSESSMENT, ALIGNMENT, FEASIBILITY" },
                 criterionName: { type: "STRING" },
                 weight: { type: "NUMBER" },
-                scoreLevel: { type: "INTEGER", description: "ระดับคุณภาพ 1, 2, 3, หรือ 4" },
+                scoreLevel: { type: "INTEGER", minimum: 1, maximum: 4, description: "ระดับคุณภาพ 1, 2, 3, หรือ 4" },
                 evidenceNotes: { type: "STRING", description: "หลักฐานสำคัญหรือเหตุผลอ้างอิงจากแผนการสอน" }
               },
               required: ["criterionCode", "weight", "scoreLevel", "evidenceNotes"]
@@ -1172,21 +1208,24 @@ ${planContent}
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: evaluationController.signal
         });
 
+        if (!isCurrentEvaluation(job)) return;
         if (response.status === 429) {
           // Rate limit reached: Trigger countdown modal and wait instead of secretly falling back!
-          handleRateLimitWaiting(planContent, apiKey, 25);
+          handleRateLimitWaiting(planContent, apiKey, 25, job);
           return;
         }
 
         const result = await response.json();
+        if (!isCurrentEvaluation(job)) return;
 
         if (!response.ok || result.error) {
           const errMsg = result.error?.message || `HTTP ${response.status}: ${response.statusText}`;
           if (errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("quota") || errMsg.includes("rate limit")) {
-            handleRateLimitWaiting(planContent, apiKey, 25);
+            handleRateLimitWaiting(planContent, apiKey, 25, job);
             return;
           }
           if (response.status === 400 || response.status === 403) {
@@ -1208,19 +1247,20 @@ ${planContent}
           rawJsonText = rawJsonText.replace(/^```(json)?\s*/i, "").replace(/\s*```$/, "");
         }
 
-        const parsedData = JSON.parse(rawJsonText);
+        const parsedData = validateAnalysis(JSON.parse(rawJsonText));
         currentAnalysisResult = parsedData;
-        renderResults(parsedData, "gemini");
+        renderResults(parsedData, "gemini", job);
         showToast("AI (Gemini) ประเมินแผนการสอนสำเร็จตามเกณฑ์มาตรฐาน", "success");
         setLoadingState(false);
       } catch (err) {
+        if (!isCurrentEvaluation(job) || err.name === "AbortError") return;
         console.error("Evaluation error:", err);
         setLoadingState(false);
         showToast(`เกิดข้อผิดพลาด: ${err.message || "ไม่สามารถเชื่อมต่อ AI ได้"}`, "error");
       }
     }
 
-    function handleRateLimitWaiting(planContent, apiKey, seconds = 25) {
+    function handleRateLimitWaiting(planContent, apiKey, seconds = 25, job) {
       if (countdownTimer) clearInterval(countdownTimer);
 
       rateLimitModal.classList.remove('hidden');
@@ -1235,100 +1275,48 @@ ${planContent}
           clearInterval(countdownTimer);
           rateLimitModal.classList.add('hidden');
           showToast("รอบโควตารีเซ็ตแล้ว กำลังส่งแผนประเมินด้วย AI อัตโนมัติ...", "info");
-          executeGeminiEvaluation(planContent, apiKey);
+          if (isCurrentEvaluation(job)) executeGeminiEvaluation(planContent, apiKey, job);
         }
       }, 1000);
     }
 
     // 100% Deterministic Local Evaluation Engine that guarantees identical outputs for identical text inputs
     function runSmartLocalEvaluation(planContent) {
+      if (!planContent || planContent.trim().length < 50) {
+        showToast("กรุณาใส่เนื้อหาแผนการสอนอย่างน้อย 50 ตัวอักษร", "error");
+        return;
+      }
+      const job = beginEvaluation();
       setLoadingState(true);
-      setTimeout(() => {
-        const text = planContent.toLowerCase();
-
-        // Extract metadata heuristically if possible
-        const teacherMatch = planContent.match(/(?:ผู้สอน|ครูผู้สอน|ชื่อผู้สอน|ครู)\s*[:：]?\s*([^\n\r]+)/i);
-        const subjectMatch = planContent.match(/(?:วิชา|รายวิชา)\s*[:：]?\s*([^\n\r]+)/i);
-        const topicMatch = planContent.match(/(?:เรื่อง|หัวข้อ|หน่วยการเรียนรู้ที่)\s*[:：]?\s*([^\n\r]+)/i);
-        const gradeMatch = planContent.match(/(?:ระดับชั้น|ชั้น|มัธยมศึกษาปีที่|ประถมศึกษาปีที่)\s*[:：]?\s*([^\n\r]+)/i);
-        const durationMatch = planContent.match(/(?:เวลา|ระยะเวลา|คาบ)\s*[:：]?\s*([^\n\r]+)/i);
-
-        const teacherName = metaTeacher.value || (teacherMatch ? teacherMatch[1].trim() : "คุณครูผู้สอน");
-        const subjectName = metaSubject.value || (subjectMatch ? subjectMatch[1].trim() : "รายวิชาตามแผนการสอน");
-        const topicName = topicMatch ? topicMatch[1].trim() : "การจัดการเรียนรู้บูรณาการ";
-        const gradeLevel = gradeMatch ? gradeMatch[1].trim() : "ระดับการศึกษาขั้นพื้นฐาน";
-        const duration = durationMatch ? durationMatch[1].trim() : "2 คาบ (100 นาที)";
-
-        // Deterministic Rubric Scoring Rules
-        const hasPhET = text.includes("phet") || text.includes("simulation") || text.includes("แบบจำลอง") || text.includes("ทดลองเสมือน") || text.includes("ar") || text.includes("3d");
-        const hasActiveLearning = text.includes("active") || text.includes("5e") || text.includes("สืบเสาะ") || text.includes("กลุ่ม") || text.includes("ร่วมมือ");
-        const hasBackupPlan = text.includes("สำรอง") || text.includes("contingency") || text.includes("ออฟไลน์") || text.includes("offline");
-        const hasRubric = text.includes("rubric") || text.includes("รูบริก") || text.includes("เกณฑ์") || text.includes("k, p, a") || text.includes("แบบประเมิน");
-        const hasEdTech = text.includes("mentimeter") || text.includes("padlet") || text.includes("quizizz") || text.includes("kahoot") || text.includes("google") || text.includes("app");
-        const hasMisconception = text.includes("เข้าใจผิด") || text.includes("misconception") || text.includes("เปรียบเทียบ") || text.includes("ทำไม");
-
-        const ckLevel = text.length > 500 ? 4 : 3;
-        const pkLevel = hasActiveLearning ? 4 : 3;
-        const tkLevel = hasBackupPlan && hasEdTech ? 4 : (hasEdTech ? 3 : 2);
-        const pckLevel = hasMisconception || hasActiveLearning ? 4 : 3;
-        const tckLevel = hasPhET ? 4 : (hasEdTech ? 3 : 2);
-        const tpkLevel = hasActiveLearning && hasEdTech ? 4 : 3;
-        const tpackLevel = (hasPhET || hasEdTech) && hasActiveLearning ? 4 : 3;
-        const assessmentLevel = hasRubric ? 4 : 3;
-        const alignmentLevel = 4;
-        const feasibilityLevel = hasBackupPlan ? 4 : 3;
-
-        const smartData = {
-          metadata: {
-            teacherName: teacherName,
-            subjectGroup: "กลุ่มสาระการเรียนรู้",
-            subjectName: subjectName,
-            gradeLevel: gradeLevel,
-            learningUnit: "หน่วยการเรียนรู้ที่ระบุในแผน",
-            topic: topicName,
-            duration: duration,
-            evaluationDate: new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
-          },
-          evaluations: [
-            { criterionCode: "CK", weight: 8, scoreLevel: ckLevel, evidenceNotes: "เนื้อหามีความถูกต้อง ชัดเจน และสอดคล้องกับมาตรฐานการเรียนรู้ตามที่ระบุในแผนการสอน" },
-            { criterionCode: "PK", weight: 8, scoreLevel: pkLevel, evidenceNotes: hasActiveLearning ? "จัดกระบวนการเรียนรู้แบบ Active Learning เน้นผู้เรียนเป็นศูนย์กลางและส่งเสริมการคิด" : "มีกระบวนการสอนชัดเจน แต่สามารถเพิ่มกิจกรรมให้นักเรียนมีส่วนร่วมได้มากขึ้น" },
-            { criterionCode: "TK", weight: 8, scoreLevel: tkLevel, evidenceNotes: hasBackupPlan ? "เลือกใช้เครื่องมือเทคโนโลยีเหมาะสม และมีแผนสำรองรองรับความเสี่ยงด้านสัญญาณอินเทอร์เน็ต" : "มีการประยุกต์ใช้เทคโนโลยีการศึกษาเพื่อสนับสนุนการเรียนรู้" },
-            { criterionCode: "PCK", weight: 10, scoreLevel: pckLevel, evidenceNotes: "วิธีสอนมีความสอดคล้องกับธรรมชาติของเนื้อหาและช่วยพัฒนาความเข้าใจเชิงลึก" },
-            { criterionCode: "TCK", weight: 10, scoreLevel: tckLevel, evidenceNotes: hasPhET ? "ใช้เทคโนโลยีแบบจำลองหรือสื่อเสมือนจริงช่วยให้เห็นภาพนามธรรมที่สังเกตได้ยาก" : "เทคโนโลยีช่วยนำเสนอและอธิบายแนวคิดสำคัญของเนื้อหาได้ดี" },
-            { criterionCode: "TPK", weight: 10, scoreLevel: tpkLevel, evidenceNotes: "เทคโนโลยีส่งเสริมการทำงานร่วมกัน การระดมสมอง และการมีส่วนร่วมในกิจกรรมกลุ่ม" },
-            { criterionCode: "TPACK", weight: 18, scoreLevel: tpackLevel, evidenceNotes: "การบูรณาการเนื้อหา วิธีสอน และเทคโนโลยีประสานสอดคล้องกันอย่างมีเอกภาพและมีเหตุผลทางการสอน" },
-            { criterionCode: "ASSESSMENT", weight: 10, scoreLevel: assessmentLevel, evidenceNotes: hasRubric ? "วัดผลครอบคลุมทั้งด้านความรู้ ทักษะ และคุณลักษณะ พร้อมเครื่องมือวัดที่ชัดเจน" : "มีการวัดผลการเรียนรู้ แต่ควรเพิ่มเกณฑ์รูบริกประเมินการใช้เทคโนโลยีให้ชัดเจนขึ้น" },
-            { criterionCode: "ALIGNMENT", weight: 10, scoreLevel: alignmentLevel, evidenceNotes: "จุดประสงค์ กิจกรรมการเรียนรู้ สื่อเทคโนโลยี และการวัดผลสอดคล้องกันตลอดทั้งแผน" },
-            { criterionCode: "FEASIBILITY", weight: 8, scoreLevel: feasibilityLevel, evidenceNotes: hasBackupPlan ? "มีความเป็นไปได้สูงในการจัดการเรียนรู้จริง มีการเตรียมความพร้อมของทรัพยากรครบถ้วน" : "สามารถนำไปสอนจริงได้ โดยควรตรวจสอบความพร้อมของอุปกรณ์ก่อนเริ่มคาบ" }
-          ],
-          actionPlan: [
-            {
-              areaToImprove: "TK & TPK (การบริหารเวลาในการใช้สื่อเทคโนโลยี)",
-              evidenceFromPlan: "มีกิจกรรมที่ใช้เครื่องมือดิจิทัลหลากหลายขั้นตอน",
-              prescribedImprovement: "ควรกำหนดระยะเวลาให้กระชับ เพื่อให้ผู้เรียนมีเวลาตกผลึกและสรุปองค์ความรู้ร่วมกันอย่างเพียงพอ"
-            },
-            {
-              areaToImprove: "การวัดและประเมินผล (Rubrics)",
-              evidenceFromPlan: "การประเมินทักษะการปฏิบัติ",
-              prescribedImprovement: "เพิ่มเกณฑ์การประเมินความสามารถในการใช้สื่อดิจิทัลเพื่อการสื่อสารและการทำงานร่วมกัน"
-            }
-          ],
+      localEvaluationTimer = setTimeout(() => {
+        if (!isCurrentEvaluation(job)) return;
+        const data = {
+          metadata: { teacherName: job.teacher, subjectName: job.subject },
+          evaluations: CRITERIA_DEFINITIONS.map(def => ({
+            criterionCode: def.id, scoreLevel: null,
+            evidenceNotes: "ยังไม่ได้ตรวจยืนยันหลักฐานด้านนี้: โหมดออฟไลน์ไม่สามารถตัดสินคุณภาพตามรูบริกได้ ต้องให้ผู้ประเมินตรวจทานหรือใช้ AI"
+          })),
+          actionPlan: [{
+            areaToImprove: "ตรวจประเมินตามรูบริกทั้ง 10 ด้าน",
+            evidenceFromPlan: "ระบบออฟไลน์ยังไม่ได้ยืนยันหลักฐานจากเนื้อหา",
+            prescribedImprovement: "ให้ผู้ประเมินตรวจแผนตามเกณฑ์ หรือเชื่อมต่อ AI เพื่อรับผลประเมินจริง"
+          }],
           summary: {
-            strengths: "1. โครงสร้างแผนการจัดการเรียนรู้มีความเป็นระบบและเชื่อมโยงตามกรอบ TPACK ได้อย่างมีประสิทธิภาพ\n2. กิจกรรมเน้นผู้เรียนเป็นสำคัญ ส่งเสริมการเรียนรู้เชิงรุก (Active Learning)\n3. การเลือกใช้สื่อและเครื่องมือดิจิทัลมีความสอดคล้องกับจุดประสงค์การเรียนรู้",
-            improvements: "1. ควรเตรียมคู่มือหรือคำแนะนำสั้นๆ สำหรับผู้เรียนที่ไม่คุ้นเคยกับเครื่องมือดิจิทัล\n2. เพิ่มเติมรูบริกการประเมินด้านกระบวนการทำงานกลุ่มให้เป็นรูปธรรมยิ่งขึ้น",
-            recommendations: "แผนการจัดการเรียนรู้นี้มีคุณภาพพร้อมนำไปใช้สอนจริงในชั้นเรียน โดยควรทดสอบความพร้อมของเครือข่ายอินเทอร์เน็ตและอุปกรณ์ก่อนจัดการเรียนรู้",
-            conclusion: "pass"
+            strengths: "ยังไม่ยืนยันจุดเด่นจากหลักฐาน",
+            improvements: "ต้องตรวจทานเนื้อหาและหลักฐานตามรูบริก",
+            recommendations: "ผลนี้เป็นสถานะรอตรวจ ไม่ใช่คะแนนคุณภาพแผนการสอน",
+            conclusion: "need_revision"
           }
         };
-
-        currentAnalysisResult = smartData;
-        renderResults(smartData, "offline");
+        currentAnalysisResult = data;
+        renderResults(data, "offline", job);
         setLoadingState(false);
-        showToast("ประเมินด้วยระบบออฟไลน์ (Rule-based สำรอง) สำเร็จ", "info");
+        showToast("ออฟไลน์: รอผู้ประเมินตรวจทาน ไม่มีการตัดสินคะแนนคุณภาพ", "info");
       }, 700);
     }
 
-    function renderResults(data, engine = "gemini") {
+    function renderResults(data, engine = "gemini", job) {
+      if (engine === "gemini") validateAnalysis(data);
       // Update Engine Badge
       if (badgeEngineSource) {
         if (engine === "gemini") {
@@ -1336,16 +1324,16 @@ ${planContent}
           badgeEngineSource.className = "text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200";
           if (repEngineSourcePrint) repEngineSourcePrint.textContent = "เครื่องมือประเมิน: Google Gemini 3 Flash (Deterministic Calibration)";
         } else {
-          badgeEngineSource.textContent = "ประเมินโดย: ระบบออฟไลน์ (Rule-based สำรอง)";
+          badgeEngineSource.textContent = "ออฟไลน์: รอผู้ประเมินตรวจทาน";
           badgeEngineSource.className = "text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200";
-          if (repEngineSourcePrint) repEngineSourcePrint.textContent = "เครื่องมือประเมิน: ระบบประเมินออฟไลน์ในเครื่อง (Heuristic Rule-based)";
+          if (repEngineSourcePrint) repEngineSourcePrint.textContent = "สถานะ: รอตรวจทาน ยังไม่มีคะแนนประเมิน";
         }
       }
 
       // 1. Fill Metadata
       const meta = data.metadata || {};
-      const teacherName = metaTeacher.value || meta.teacherName || "คุณครูผู้สอน";
-      const subjectName = metaSubject.value || meta.subjectName || "รายวิชาตามแผน";
+      const teacherName = (job ? job.teacher : metaTeacher.value) || meta.teacherName || "คุณครูผู้สอน";
+      const subjectName = (job ? job.subject : metaSubject.value) || meta.subjectName || "รายวิชาตามแผน";
 
       document.getElementById('rep-teacher').textContent = teacherName;
       document.getElementById('rep-teacher-sign').textContent = teacherName;
@@ -1369,12 +1357,9 @@ ${planContent}
         const evalItem = (data.evaluations || []).find(e => 
           e.criterionCode?.toUpperCase() === def.id ||
           (def.code && e.criterionCode?.toUpperCase() === def.code?.toUpperCase())
-        ) || {
-          scoreLevel: 3,
-          evidenceNotes: "สอดคล้องตามเกณฑ์มาตรฐาน"
-        };
+        );
 
-        const level = Math.max(1, Math.min(4, Number(evalItem.scoreLevel) || 3));
+        const level = engine === "offline" ? null : evalItem.scoreLevel;
         const weighted = (level / 4) * def.weight;
         totalCalculatedScore += weighted;
 
@@ -1393,11 +1378,11 @@ ${planContent}
           <td class="p-2.5 text-center font-medium border-r border-slate-200">${def.weight}</td>
           <td class="p-2.5 text-center border-r border-slate-200">
             <span class="inline-flex items-center justify-center w-6 h-6 rounded-full font-bold text-xs ${getLevelBadgeClass(level)}">
-              ${level}
+              ${level === null ? "-" : level}
             </span>
           </td>
           <td class="p-2.5 text-center font-bold font-sans text-slate-800 border-r border-slate-200">
-            ${weighted.toFixed(2)}
+            ${engine === "offline" ? "รอตรวจ" : weighted.toFixed(2)}
           </td>
           <td class="p-2.5 text-slate-600 font-sarabun leading-relaxed text-[11px]">
             ${escapeHtml(evalItem.evidenceNotes || "-")}
@@ -1415,6 +1400,14 @@ ${planContent}
       document.getElementById('dash-quality-level').textContent = interpretation.title;
       document.getElementById('table-quality-label').textContent = `${interpretation.title} (${interpretation.meaning})`;
       document.getElementById('dash-progress-bar').style.width = `${Math.min(100, finalScore)}%`;
+
+      if (engine === "offline") {
+        document.getElementById('dash-total-score').textContent = "-";
+        document.getElementById('table-total-score').textContent = "รอตรวจ";
+        document.getElementById('dash-quality-level').textContent = "ยังไม่ประเมิน";
+        document.getElementById('table-quality-label').textContent = "รอผู้ประเมินตรวจทาน";
+        document.getElementById('dash-progress-bar').style.width = "0%";
+      }
 
       // 3. Action Plan Table
       const actionBody = document.getElementById('action-plan-body');
@@ -1459,8 +1452,14 @@ ${planContent}
         badgeElem.className = "inline-flex items-center text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-100 text-rose-800";
       }
 
-      // 6. Draw Chart
-      updateRadarChart(radarLabels, radarScores);
+      if (engine === "offline") {
+        ['radio-pass', 'radio-pass-mod', 'radio-revise'].forEach(id => document.getElementById(id).checked = false);
+        badgeElem.textContent = "รอผู้ประเมินตรวจทาน";
+        badgeElem.className = "inline-flex items-center text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800";
+        if (tpackChartInstance) { tpackChartInstance.destroy(); tpackChartInstance = null; }
+      } else {
+        updateRadarChart(radarLabels, radarScores);
+      }
 
       // Show container
       resultsWrapper.classList.remove('hidden');
@@ -1618,4 +1617,3 @@ ${planContent}
   </script>
 </body>
 </html>
-```
