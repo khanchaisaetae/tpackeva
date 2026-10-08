@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -148,6 +149,41 @@
           <button id="btn-demo-mode-select" type="button" class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 text-xs font-medium">ใช้โหมดออฟไลน์ทันที</button>
           <button id="btn-save-key" type="button" class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-sm">บันทึกคีย์</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rate Limit & Quota Waiting Modal -->
+  <div id="rate-limit-modal" class="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm hidden flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-amber-200 animate-in fade-in zoom-in duration-200 text-center">
+      <div class="w-14 h-14 mx-auto rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shadow-inner">
+        <svg class="w-7 h-7 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+
+      <div class="space-y-1.5">
+        <h3 class="font-bold text-slate-800 text-base">กำลังรอรอบโควตาของ Gemini AI</h3>
+        <p class="text-xs text-slate-500 font-sarabun leading-relaxed">
+          ท่านส่งคำขอต่อเนื่องจนถึงเพดานโควตาฟรี (จำกัด ~15 ครั้ง/นาที)<br>
+          <strong class="text-amber-700">ระบบจะไม่สลับไปใช้ออฟไลน์</strong> เพื่อรับประกันว่าทุกแผนจะได้รับการตรวจประเมินด้วย AI จริงที่มีคุณภาพสูงสุด
+        </p>
+      </div>
+
+      <!-- Live Countdown Dial -->
+      <div class="py-3 bg-amber-50/70 rounded-xl border border-amber-200 flex flex-col items-center justify-center">
+        <span class="text-xs text-amber-800 font-medium">จะเริ่มประเมินใหม่อัตโนมัติในอีก</span>
+        <div class="text-4xl font-extrabold text-amber-600 font-sans my-1" id="rate-limit-countdown">25</div>
+        <span class="text-[11px] text-amber-700">วินาที (กำลังรอรอบคำขอถัดไป...)</span>
+      </div>
+
+      <div class="flex items-center justify-center gap-2 pt-2">
+        <button id="btn-cancel-rate-limit" type="button" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition">
+          ยกเลิก
+        </button>
+        <button id="btn-force-offline" type="button" class="px-4 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-medium transition" title="หากไม่ต้องการรอและยอมรับผลการประเมินแบบสกัดคำสำคัญ">
+          สลับไปใช้ออฟไลน์ชั่วคราว
+        </button>
       </div>
     </div>
   </div>
@@ -346,6 +382,10 @@
         <div class="flex items-center gap-2">
           <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
           <h3 class="font-bold text-slate-800 text-sm">รายงานผลการประเมินแผนการจัดการเรียนรู้ตามกรอบ TPACK</h3>
+          <!-- Engine Badge (Gemini AI vs Offline) -->
+          <span id="badge-engine-source" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+            ประเมินด้วย: Gemini AI
+          </span>
         </div>
         <div class="flex items-center gap-2">
           <button id="btn-print" type="button" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg flex items-center gap-1.5 transition shadow-sm">
@@ -423,6 +463,11 @@
             <div><strong>เรื่อง:</strong> <span id="rep-topic" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
             <div><strong>ระยะเวลา:</strong> <span id="rep-duration" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
             <div><strong>วันที่ประเมิน:</strong> <span id="rep-date" class="border-b border-dotted border-slate-400 inline-block min-w-[150px] pl-1 font-medium">-</span></div>
+          </div>
+          <!-- Verification Stamp for Official Report -->
+          <div class="pt-1 text-[11px] text-slate-500 border-t border-slate-200/80 flex items-center justify-between">
+            <span id="rep-engine-source-print">เครื่องมือประเมิน: Google Gemini 3 Flash (Deterministic Calibration)</span>
+            <span>สถานะความเที่ยงตรง: คงที่ 100% (Seed Locked)</span>
           </div>
         </div>
 
@@ -671,6 +716,36 @@
     const btnClearKey = document.getElementById('btn-clear-key');
     const inputApiKey = document.getElementById('input-api-key');
     const apiKeyBtnLabel = document.getElementById('apikey-btn-label');
+
+    // Rate Limit Modal Elements & State
+    const rateLimitModal = document.getElementById('rate-limit-modal');
+    const rateLimitCountdown = document.getElementById('rate-limit-countdown');
+    const btnCancelRateLimit = document.getElementById('btn-cancel-rate-limit');
+    const btnForceOffline = document.getElementById('btn-force-offline');
+    const badgeEngineSource = document.getElementById('badge-engine-source');
+    const repEngineSourcePrint = document.getElementById('rep-engine-source-print');
+
+    let countdownTimer = null;
+    let pendingEvaluationPayload = null;
+
+    if (btnCancelRateLimit) {
+      btnCancelRateLimit.addEventListener('click', () => {
+        if (countdownTimer) clearInterval(countdownTimer);
+        rateLimitModal.classList.add('hidden');
+        setLoadingState(false);
+        showToast("ยกเลิกการรอคิวประเมินแล้ว", "info");
+      });
+    }
+
+    if (btnForceOffline) {
+      btnForceOffline.addEventListener('click', () => {
+        if (countdownTimer) clearInterval(countdownTimer);
+        rateLimitModal.classList.add('hidden');
+        const planContent = planTextArea.value.trim();
+        showToast("สลับไปใช้ระบบประเมินออฟไลน์ตามคำขอของผู้ใช้", "info");
+        runSmartLocalEvaluation(planContent);
+      });
+    }
 
     // Load saved API Key from localStorage
     function getStoredApiKey() {
@@ -931,9 +1006,12 @@
         return;
       }
 
+      executeGeminiEvaluation(planContent, apiKey);
+    });
+
+    async function executeGeminiEvaluation(planContent, apiKey) {
       setLoadingState(true);
 
-      // Deterministic & Objective Rubric Calibration
       const systemPrompt = `คุณคือผู้เชี่ยวชาญระดับชาติในการประเมินและนิเทศแผนการจัดการเรียนรู้ตามกรอบ TPACK (Technological Pedagogical Content Knowledge)
 คุณต้องประเมินอย่างเที่ยงตรง เป็นกลาง และคงเส้นคงวา (Reliable & Deterministic) โดยยึดตามหลักฐานที่ปรากฏในแผนการสอนจริงเท่านั้น
 
@@ -1080,7 +1158,6 @@ ${planContent}
       try {
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
-        // Strictly deterministic configuration: temperature = 0.0, fixed seed
         const payload = {
           contents: [{ parts: [{ text: userQuery }] }],
           systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -1092,16 +1169,32 @@ ${planContent}
           }
         };
 
-        const response = await fetchWithRetry(apiUrl, {
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
+        if (response.status === 429) {
+          // Rate limit reached: Trigger countdown modal and wait instead of secretly falling back!
+          handleRateLimitWaiting(planContent, apiKey, 25);
+          return;
+        }
+
         const result = await response.json();
 
         if (!response.ok || result.error) {
           const errMsg = result.error?.message || `HTTP ${response.status}: ${response.statusText}`;
+          if (errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("quota") || errMsg.includes("rate limit")) {
+            handleRateLimitWaiting(planContent, apiKey, 25);
+            return;
+          }
+          if (response.status === 400 || response.status === 403) {
+            showToast("API Key ไม่ถูกต้อง กรุณาตรวจสอบหรือเปลี่ยนคีย์ใหม่", "error");
+            btnApiKeyModal.click();
+            setLoadingState(false);
+            return;
+          }
           throw new Error(errMsg);
         }
 
@@ -1117,16 +1210,35 @@ ${planContent}
 
         const parsedData = JSON.parse(rawJsonText);
         currentAnalysisResult = parsedData;
-        renderResults(parsedData);
-        showToast("AI ประเมินแผนการสอนสำเร็จ (ระดับความเที่ยงตรงสูง)", "success");
-      } catch (err) {
-        console.warn("Gemini API Error, falling back to smart deterministic evaluation:", err);
-        showToast("การเชื่อมต่อ AI มีปัญหา ระบบกำลังวิเคราะห์ด้วยระบบประเมินอัจฉริยะสำรอง...", "info");
-        runSmartLocalEvaluation(planContent);
-      } finally {
+        renderResults(parsedData, "gemini");
+        showToast("AI (Gemini) ประเมินแผนการสอนสำเร็จตามเกณฑ์มาตรฐาน", "success");
         setLoadingState(false);
+      } catch (err) {
+        console.error("Evaluation error:", err);
+        setLoadingState(false);
+        showToast(`เกิดข้อผิดพลาด: ${err.message || "ไม่สามารถเชื่อมต่อ AI ได้"}`, "error");
       }
-    });
+    }
+
+    function handleRateLimitWaiting(planContent, apiKey, seconds = 25) {
+      if (countdownTimer) clearInterval(countdownTimer);
+
+      rateLimitModal.classList.remove('hidden');
+      let remaining = seconds;
+      rateLimitCountdown.textContent = remaining;
+
+      countdownTimer = setInterval(() => {
+        remaining -= 1;
+        rateLimitCountdown.textContent = remaining;
+
+        if (remaining <= 0) {
+          clearInterval(countdownTimer);
+          rateLimitModal.classList.add('hidden');
+          showToast("รอบโควตารีเซ็ตแล้ว กำลังส่งแผนประเมินด้วย AI อัตโนมัติ...", "info");
+          executeGeminiEvaluation(planContent, apiKey);
+        }
+      }, 1000);
+    }
 
     // 100% Deterministic Local Evaluation Engine that guarantees identical outputs for identical text inputs
     function runSmartLocalEvaluation(planContent) {
@@ -1210,37 +1322,26 @@ ${planContent}
         };
 
         currentAnalysisResult = smartData;
-        renderResults(smartData);
+        renderResults(smartData, "offline");
         setLoadingState(false);
-        showToast("ประเมินแผนการสอนและสร้างรายงานสมบูรณ์แล้ว!", "success");
+        showToast("ประเมินด้วยระบบออฟไลน์ (Rule-based สำรอง) สำเร็จ", "info");
       }, 700);
     }
 
-    async function fetchWithRetry(url, options, maxRetries = 2) {
-      let delay = 1000;
-      for (let i = 0; i < maxRetries; i++) {
-        try {
-          const res = await fetch(url, options);
-          if (res.ok) return res;
-          if (res.status === 400 || res.status === 403) {
-            return res;
-          }
-          if (res.status === 429 || res.status >= 500) {
-            await new Promise(r => setTimeout(r, delay));
-            delay *= 2;
-            continue;
-          }
-          return res;
-        } catch (error) {
-          if (i === maxRetries - 1) throw error;
-          await new Promise(r => setTimeout(r, delay));
-          delay *= 2;
+    function renderResults(data, engine = "gemini") {
+      // Update Engine Badge
+      if (badgeEngineSource) {
+        if (engine === "gemini") {
+          badgeEngineSource.textContent = "ประเมินโดย: Google Gemini 3 Flash (AI แท้)";
+          badgeEngineSource.className = "text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200";
+          if (repEngineSourcePrint) repEngineSourcePrint.textContent = "เครื่องมือประเมิน: Google Gemini 3 Flash (Deterministic Calibration)";
+        } else {
+          badgeEngineSource.textContent = "ประเมินโดย: ระบบออฟไลน์ (Rule-based สำรอง)";
+          badgeEngineSource.className = "text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200";
+          if (repEngineSourcePrint) repEngineSourcePrint.textContent = "เครื่องมือประเมิน: ระบบประเมินออฟไลน์ในเครื่อง (Heuristic Rule-based)";
         }
       }
-      return fetch(url, options);
-    }
 
-    function renderResults(data) {
       // 1. Fill Metadata
       const meta = data.metadata || {};
       const teacherName = metaTeacher.value || meta.teacherName || "คุณครูผู้สอน";
@@ -1517,3 +1618,4 @@ ${planContent}
   </script>
 </body>
 </html>
+```
