@@ -701,7 +701,7 @@
     }
     function beginEvaluation() {
       cancelEvaluation();
-      return { version: evaluationVersion, teacher: metaTeacher.value.trim(), subject: metaSubject.value.trim() };
+      return { version: evaluationVersion, teacher: metaTeacher.value.trim(), subject: metaSubject.value.trim(), evaluationDate: new Date().toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', year: 'numeric', month: 'long', day: 'numeric' }) };
     }
     function isCurrentEvaluation(job) { return job.version === evaluationVersion; }
     function validateAnalysis(data) {
@@ -1044,7 +1044,13 @@
     async function executeGeminiEvaluation(planContent, apiKey, job = beginEvaluation()) {
       if (!isCurrentEvaluation(job)) return;
       setLoadingState(true);
-      evaluationController = new AbortController();
+      const requestController = new AbortController();
+      evaluationController = requestController;
+      let requestTimedOut = false;
+      const requestTimeout = setTimeout(() => {
+        requestTimedOut = true;
+        requestController.abort();
+      }, 90000);
 
       const systemPrompt = `คุณคือผู้เชี่ยวชาญระดับชาติในการประเมินและนิเทศแผนการจัดการเรียนรู้ตามกรอบ TPACK (Technological Pedagogical Content Knowledge)
 คุณต้องประเมินอย่างเที่ยงตรง เป็นกลาง และคงเส้นคงวา (Reliable & Deterministic) โดยยึดตามหลักฐานที่ปรากฏในแผนการสอนจริงเท่านั้น
@@ -1209,7 +1215,7 @@ ${planContent}
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-          signal: evaluationController.signal
+          signal: requestController.signal
         });
 
         if (!isCurrentEvaluation(job)) return;
@@ -1253,10 +1259,19 @@ ${planContent}
         showToast("AI (Gemini) ประเมินแผนการสอนสำเร็จตามเกณฑ์มาตรฐาน", "success");
         setLoadingState(false);
       } catch (err) {
-        if (!isCurrentEvaluation(job) || err.name === "AbortError") return;
+        if (!isCurrentEvaluation(job)) return;
+        if (err.name === "AbortError" && !requestTimedOut) return;
+        if (requestTimedOut) {
+          setLoadingState(false);
+          showToast("Gemini ไม่ตอบกลับภายใน 90 วินาที กรุณาลองใหม่", "error");
+          return;
+        }
         console.error("Evaluation error:", err);
         setLoadingState(false);
         showToast(`เกิดข้อผิดพลาด: ${err.message || "ไม่สามารถเชื่อมต่อ AI ได้"}`, "error");
+      } finally {
+        clearTimeout(requestTimeout);
+        if (evaluationController === requestController) evaluationController = null;
       }
     }
 
@@ -1343,7 +1358,7 @@ ${planContent}
       document.getElementById('rep-unit').textContent = meta.learningUnit || "-";
       document.getElementById('rep-topic').textContent = meta.topic || "-";
       document.getElementById('rep-duration').textContent = meta.duration || "-";
-      document.getElementById('rep-date').textContent = meta.evaluationDate || new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+      document.getElementById('rep-date').textContent = job?.evaluationDate || new Date().toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', year: 'numeric', month: 'long', day: 'numeric' });
 
       // 2. Score calculations & Table Population
       const tableBody = document.getElementById('scores-table-body');
